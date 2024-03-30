@@ -15,6 +15,7 @@ from distutils.version import LooseVersion
 import SCons.Util
 import subprocess
 import sys
+import datetime
 import time
 import platform
 import getpass
@@ -22,6 +23,7 @@ import warnings
 import errno
 import shlex
 import six
+import multiprocessing
 
 
 def GetPlatformInfo(env):
@@ -63,8 +65,6 @@ def PlatformExclude(env, **kwargs):
     if 'platform_exclude' not in kwargs:
         return False
 
-    from distutils.version import LooseVersion
-
     distro = env.GetPlatformInfo()
     this_ver = LooseVersion(distro[1])
 
@@ -96,7 +96,6 @@ def GetTestEnvironment(test):
 def RunUnitTest(env, target, source, timeout=300):
     if 'BUILD_ONLY' in env['ENV']:
         return
-    import subprocess
 
     if 'CONTRAIL_UT_TEST_TIMEOUT' in env['ENV']:
         timeout = int(env['ENV']['CONTRAIL_UT_TEST_TIMEOUT'])
@@ -124,12 +123,6 @@ def RunUnitTest(env, target, source, timeout=300):
     # Use gprof unless NO_HEAPCHECK is set or in CentOS
     heap_check = 'NO_HEAPCHECK' not in ShEnv
     if heap_check:
-        try:
-            # Skip HEAPCHECK in CentOS 6.4
-            subprocess.check_call("grep -q \"CentOS release 6.4\" /etc/issue 2>/dev/null", shell=True)
-            heap_check = False
-        except Exception:
-            pass
         ShEnv['HEAPCHECK'] = 'normal'
         ShEnv['PPROF_PATH'] = 'build/bin/pprof'
         # Fix for frequent crash in gperftools ListerThread during exit
@@ -372,15 +365,7 @@ def venv_add_pip_pkg(env, v, pkg_list):
             targets.append(name)
 
     pip = "/bin/bash -c \"source %s/bin/activate 2>/dev/null; pip" % venv._path
-    download_cache = ""
-    pip_version = subprocess.check_output(
-        "%s --version | awk '{print \$2}'\"" % pip, shell=True).rstrip() # noqa
-    if pip_version < LooseVersion("6.0"):
-        tdir = '/tmp/cache/%s/systemless_test' % getpass.getuser()
-        download_cache = "--download-cache=%s" % (tdir)
-
-    cmd = env.Command(targets, None, '%s install %s %s"' %
-                                     (pip, download_cache, ' '.join(pkg_list)))
+    cmd = env.Command(targets, None, '%s install %s"' % (pip, ' '.join(pkg_list)))
     env.AlwaysBuild(cmd)
     env.Depends(cmd, venv)
     return cmd
@@ -476,7 +461,7 @@ def GetBuildVersion(env):
                              stderr=subprocess.PIPE,
                              shell='True')
         git_hash, err = p.communicate()
-        git_hash = git_hash.strip()
+        git_hash = six.ensure_str(git_hash).strip()
     else:
         # Or should we look for vrouter, tools/build, or ??
         git_hash = 'noctrlr'
@@ -504,7 +489,6 @@ def GetBuildInfoData(env, target, source):
         build_host = "unknown"
 
     # Fetch Time in UTC
-    import datetime
     build_time = str(datetime.datetime.utcnow())
 
     build_git_info, build_version = GetBuildVersion(env)
@@ -580,7 +564,6 @@ def GenerateBuildInfoPyCode(env, target, source, path):
         build_host = "unknown"
 
     # Fetch Time in UTC
-    import datetime
     build_time = datetime.datetime.utcnow()
 
     build_git_info, build_version = GetBuildVersion(env)
@@ -737,8 +720,14 @@ def wait_for_sandesh_install(env):
             time.sleep(1)
 
 
-class SandeshWarning(SCons.Warnings.Warning):
-    pass
+if hasattr(SCons.Warnings, "Warning"):
+    # scons 3.x
+    class SandeshWarning(SCons.Warnings.Warning):
+        pass
+else:
+    # scons 4.x
+    class SandeshWarning(SCons.Warnings.SConsWarning):
+        pass
 
 
 class SandeshCodeGeneratorError(SandeshWarning):
@@ -1164,7 +1153,6 @@ def UseSystemBoost(env):
     """
     Whether to use the boost library provided by the system.
     """
-    from distutils.version import LooseVersion
     (distname, version, _) = env.GetPlatformInfo()
     exclude_dist = {
         'Ubuntu': '14.04',
@@ -1190,7 +1178,6 @@ def UseSystemTBB(env):
     """ Return True whenever the compilation uses the built-in version of the
     Thread-Building Block library instead of compiling it.
     """
-    from distutils.version import LooseVersion
     systemTBBdict = {
         'Ubuntu': '14.04',
         'debian': '8',
@@ -1205,28 +1192,6 @@ def UseSystemTBB(env):
     }
     (distname, version, _) = env.GetPlatformInfo()
     v_required = systemTBBdict.get(distname)
-    if v_required and LooseVersion(version) >= LooseVersion(v_required):
-        return True
-    return False
-
-
-def UseCassandraCql(env):
-    """
-    Whether to use CQL interface to cassandra
-    """
-    from distutils.version import LooseVersion
-    cassandra_cql_supported = {
-        'Ubuntu': '14.04',
-        'debian': '8',
-        'raspbian': '8',
-        'centos': '7.1',
-        'CentOS Linux': '7.1',
-        'redhat': '7.0',
-        'Red Hat Enterprise Linux Server': '7.0',
-        'Red Hat Enterprise Linux': '8.0',
-    }
-    (distname, version, _) = env.GetPlatformInfo()
-    v_required = cassandra_cql_supported.get(distname)
     if v_required and LooseVersion(version) >= LooseVersion(v_required):
         return True
     return False
@@ -1302,7 +1267,6 @@ def determine_job_value():
         pass
 
     try:
-        import multiprocessing
         ncpu = multiprocessing.cpu_count()
         ncore = ncpu / 2
     except Exception:
@@ -1581,7 +1545,6 @@ def SetupBuildEnvironment(conf):
 
     env.AddMethod(UseSystemBoost, "UseSystemBoost")
     env.AddMethod(UseSystemTBB, "UseSystemTBB")
-    env.AddMethod(UseCassandraCql, "UseCassandraCql")
     env.AddMethod(CppDisableExceptions, "CppDisableExceptions")
     env.AddMethod(CppEnableExceptions, "CppEnableExceptions")
 
@@ -1808,3 +1771,9 @@ def SchemaSyncSconsEnvBuildFunc(env):
 def SchemaSyncFunc(env, target, source):
     SchemaSyncSconsEnvBuildFunc(env)
     return env.SchemaSyncSconsBuild(target, source)
+
+
+def FromBytes(data):
+    if isinstance(data, six.binary_type):
+        return data.decode()
+    return data

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (c) 2019 Juniper Networks, Inc. All rights reserved.
 #
@@ -9,6 +9,7 @@ from distutils.spawn import find_executable
 import os
 import re
 import shutil
+
 
 def generate_report():
     """ Run the tests and generate report."""
@@ -32,6 +33,7 @@ genhtml -o build/coverage/controller/test_coverage -t test --num-spaces 4 build/
             # Avoid stdout buffering by execing command into child process.
             os.execv(cmd_path, cmd_args)
         os.waitpid(pid, 0)
+
 
 def fix_report(report):
     """ Remove reports of generated code, test code and third-party code."""
@@ -73,6 +75,7 @@ def fix_report(report):
         for line in modified_lines:
             filep.write(line)
 
+
 def print_help():
     """ Print generated report access information."""
     print("Archive generated report to a web server. e.g.")
@@ -81,6 +84,7 @@ def print_help():
           "/cs-shared/contrail_code_coverage/")
     print("http://10.84.5.100/cs-shared/contrail_code_coverage/test_coverage")
 
+
 def main():
     """ Main routine."""
     generate_report()
@@ -88,5 +92,6 @@ def main():
     fix_report("build/coverage/controller/test_coverage/index-sort-l.html")
     fix_report("build/coverage/controller/test_coverage/index-sort-f.html")
     print_help()
+
 
 main()

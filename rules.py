@@ -1160,13 +1160,6 @@ def UseSystemBoost(env):
     """
     (distname, version, _) = env.GetPlatformInfo()
     exclude_dist = {
-        'Ubuntu': '14.04',
-        'debian': '8',
-        'raspbian': '8',
-        'centos': '7.0',
-        'CentOS Linux': '7.0',
-        'fedora': '20',
-        'Fedora': '20',
         'SUSE Linux Enterprise Desktop ': '12',
         'SUSE Linux Enterprise Server ': '12',
         'redhat': '7.0',

@@ -252,7 +252,7 @@ def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
                 cov_cmd += ' -- --blacklist-file ' + skipfile
         else:
             # NOTE: there is no UT skips in this case. But this case is not used in the code now.
-            test_cmd = 'python setup.py run_tests'
+            test_cmd = 'python3 setup.py run_tests'
             cov_cmd = test_cmd + ' --coverage'
         test_cmd = env.Command('test.log', sdist_target, cmd_base % (test_cmd, "test"))
         cov_cmd = env.Command('coveragetest.log', sdist_target, cmd_base % (cov_cmd, 'coveragetest'))
@@ -379,7 +379,7 @@ def venv_add_build_pkg(env, v, pkg):
         t = 'build-' + p.replace('/', '_')
         cmd += env.Command(
             t, '',
-            '/bin/bash -c "source %s/bin/activate; pushd %s && python setup.py install; popd"' % (
+            '/bin/bash -c "source %s/bin/activate; pushd %s && python3 setup.py install; popd"' % (
                 venv._path, p))
     env.AlwaysBuild(cmd)
     env.Depends(cmd, venv)

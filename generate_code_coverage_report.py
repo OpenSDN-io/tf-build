@@ -4,7 +4,6 @@
 #
 """ Run C++ based unit tests and generate code coverage report using gcov."""
 
-from __future__ import print_function
 from distutils.spawn import find_executable
 import os
 import re

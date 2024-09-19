@@ -1734,7 +1734,7 @@ def SchemaSyncBuilder(target, source, env):
     target_path = env.Dir(str(target[0]).rsplit('/', 1)[0] + "/").abspath
     # generate yaml schema
     generateds = env.File('#src/contrail-api-client/generateds/generateDS.py').abspath
-    schema_gen_cmd = "python %s -f -o %s -g contrail-json-schema %s" % (
+    schema_gen_cmd = "python3 %s -f -o %s -g contrail-json-schema %s" % (
         generateds, target_path, str(source[0]))
     code = subprocess.call(schema_gen_cmd, shell=True)
     if code != 0:

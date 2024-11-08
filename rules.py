@@ -982,68 +982,6 @@ def GoCniFunc(env, filepath, target=''):
     return env['TOP'] + '/container/cni/bin/' + filepath
 
 
-# ThriftGenCpp Methods
-ThriftServiceRe = re.compile(r'service\s+(\S+)\s*{', re.M)
-
-
-def ThriftServicesFunc(node):
-    contents = node.get_text_contents()
-    return ThriftServiceRe.findall(contents)
-
-
-def ThriftSconsEnvFunc(env, asynch):
-    opath = env.Dir('.').abspath
-    thriftcmd = os.path.join(env.Dir(env['TOP_BIN']).abspath, 'thrift')
-    if asynch:
-        lstr = thriftcmd + ' --gen cpp:async -o ' + opath + ' $SOURCE'
-    else:
-        lstr = thriftcmd + ' --gen cpp -o ' + opath + ' $SOURCE'
-    cppbuild = Builder(action=lstr)
-    env.Append(BUILDERS={'ThriftCpp': cppbuild})
-
-
-def ThriftGenCppFunc(env, file, asynch):
-    ThriftSconsEnvFunc(env, asynch)
-    suffixes = ['_types.h', '_constants.h', '_types.cpp', '_constants.cpp']
-    basename = Basename(file)
-    base_files = map(lambda s: 'gen-cpp/' + basename + s, suffixes)
-    services = ThriftServicesFunc(env.File(file))
-    service_cfiles = map(lambda s: 'gen-cpp/' + s + '.cpp', services)
-    service_hfiles = map(lambda s: 'gen-cpp/' + s + '.h', services)
-    targets = base_files + service_cfiles + service_hfiles
-    env.Depends(targets, '#build/bin/thrift' + env['PROGSUFFIX'])
-    return env.ThriftCpp(targets, file)
-
-
-def ThriftPyBuilder(source, target, env, for_signature):
-    output_dir = os.path.dirname(os.path.dirname(str(target[0])))
-    return ('%s --gen py:new_style,utf8strings -I src/ -out %s %s' %
-            (os.path.join(env.Dir(env['TOP_BIN']).abspath, 'thrift'), output_dir, source[0]))
-
-
-def ThriftSconsEnvPyFunc(env):
-    pybuild = Builder(generator=ThriftPyBuilder)
-    env.Append(BUILDERS={'ThriftPy': pybuild})
-
-
-def ThriftGenPyFunc(env, path, target=''):
-    modules = [
-        '__init__.py',
-        'constants.py',
-        'ttypes.py']
-    basename = Basename(path)
-    path_split = basename.rsplit('/', 1)
-    if len(path_split) == 2:
-        mod_dir = path_split[1] + '/'
-    else:
-        mod_dir = path_split[0] + '/'
-    if target[-1] != '/':
-        target += '/'
-    targets = map(lambda module: target + 'gen_py/' + mod_dir + module, modules)
-    env.Depends(targets, '#build/bin/thrift' + env['PROGSUFFIX'])
-    return env.ThriftPy(targets, path)
-
-
 def IFMapBuilderCmd(source, target, env, for_signature):
     output = Basename(source[0].abspath)
     return '%s -f -g ifmap-backend -o %s %s' % (env.File('#src/contrail-api-client/generateds/generateDS.py').abspath, output, source[0])
@@ -1527,10 +1465,7 @@ def SetupBuildEnvironment(conf):
     env.AddMethod(GoBuildFunc, "GoBuild")
     env.AddMethod(GoModFunc, "GoMod")
     env.AddMethod(GoTestFunc, "GoTest")
-    env.AddMethod(ThriftGenCppFunc, "ThriftGenCpp")
     env.AddMethod(SchemaSyncFunc, "SyncSchema")
-    ThriftSconsEnvPyFunc(env)
-    env.AddMethod(ThriftGenPyFunc, "ThriftGenPy")
     CreateIFMapBuilder(env)
     CreateTypeBuilder(env)
     CreateDeviceAPIBuilder(env)

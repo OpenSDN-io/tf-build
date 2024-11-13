@@ -13,7 +13,6 @@ from SCons.Node import Alias
 from distutils.spawn import find_executable
 from distutils.version import LooseVersion
 import SCons.Util
-import six
 import subprocess
 import sys
 import datetime
@@ -23,8 +22,13 @@ import getpass
 import warnings
 import errno
 import shlex
-import six
 import multiprocessing
+
+
+def _ensure_str(s):
+    if isinstance(s, bytes):
+        return s.decode()
+    return s
 
 
 def GetPlatformInfo(env):
@@ -462,7 +466,7 @@ def GetBuildVersion(env):
                              stderr=subprocess.PIPE,
                              shell='True')
         git_hash, err = p.communicate()
-        git_hash = six.ensure_str(git_hash).strip()
+        git_hash = _ensure_str(git_hash).strip()
     else:
         # Or should we look for vrouter, tools/build, or ??
         git_hash = 'noctrlr'
@@ -825,7 +829,7 @@ def SandeshGenOnlyCppFunc(env, file, extra_suffixes=[]):
         '_html.cpp']
 
     if extra_suffixes:
-        if isinstance(extra_suffixes, six.string_types):
+        if isinstance(extra_suffixes, str):
             extra_suffixes = [extra_suffixes]
         suffixes += extra_suffixes
 
@@ -884,7 +888,7 @@ def SandeshGenCppFunc(env, file, extra_suffixes=[]):
         '_html.cpp']
 
     if extra_suffixes:
-        if isinstance(extra_suffixes, six.string_types):
+        if isinstance(extra_suffixes, str):
             extra_suffixes = [extra_suffixes]
         suffixes += extra_suffixes
 
@@ -1069,7 +1073,7 @@ def VerifyClVersion():
 
     # Unfortunately there's no better way to check the CL version
     output = subprocess.check_output(['cl.exe'], stderr=subprocess.STDOUT, encoding='ASCII')
-    output = six.ensure_str(output)
+    output = _ensure_str(output)
     regex_string = "Microsoft \(R\) C/C\+\+ [\s\w]*Version ([0-9]+)\." +\
                    "([0-9]+)\.([0-9]+)(?:\.([0-9]+))?[\s\w]*" # noqa
     regex_parser = re.compile(regex_string)
@@ -1149,7 +1153,7 @@ def PlatformDarwin(env):
     cmd = 'sw_vers | \grep ProductVersion' # noqa
     p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, shell=True)
     ver, _ = p.communicate()
-    ver = six.ensure_str(ver)
+    ver = _ensure_str(ver)
     ver = ver.rstrip('\n')
     ver = re.match(r'ProductVersion:\s+(\d+\.\d+)', ver).group(1)
     if float(ver) >= 10.9:
@@ -1392,7 +1396,7 @@ def SetupBuildEnvironment(conf):
     # Store repo projects in the environment
     proc = subprocess.Popen('repo list', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell='True')
     repo_out, _ = proc.communicate()
-    repo_out = six.ensure_str(repo_out)
+    repo_out = _ensure_str(repo_out)
     repo_lines = repo_out.splitlines()
     repo_list = {}
     for line in repo_lines:
@@ -1689,7 +1693,7 @@ def SchemaSyncBuilder(target, source, env):
     yaml_schema_status_cmd = "git status --porcelain -- ."
     output = subprocess.check_output(
         yaml_schema_status_cmd, shell=True, cwd=yaml_schema_path)
-    output = six.ensure_str(output)
+    output = _ensure_str(output)
     if output != "":
         dec_str = "#" * 80
         print("%s\n\nSchema modified!!!\n\n" % dec_str)
@@ -1712,6 +1716,6 @@ def SchemaSyncFunc(env, target, source):
 
 
 def FromBytes(data):
-    if isinstance(data, six.binary_type):
+    if isinstance(data, bytes):
         return data.decode()
     return data

@@ -24,6 +24,10 @@ import errno
 import shlex
 import multiprocessing
 
+try:
+    import distro
+except ImportError:
+    pass
 
 def _ensure_str(s):
     if isinstance(s, bytes):
@@ -36,19 +40,22 @@ def GetPlatformInfo(env):
     Returns same 3-tuple as platform.dist()/platform.linux_distribution() (caches tuple)
     '''
     GetPlatformInfo.__dict__.setdefault('system', None)
-    GetPlatformInfo.__dict__.setdefault('distro', None)
+    GetPlatformInfo.__dict__.setdefault('distrib', None)
     if not GetPlatformInfo.system:
         GetPlatformInfo.system = platform.system()
 
-    if not GetPlatformInfo.distro:
+    if not GetPlatformInfo.distrib:
         if GetPlatformInfo.system == 'Linux':
-            GetPlatformInfo.distro = platform.linux_distribution()
+            if hasattr(platform, 'linux_distribution'):
+                GetPlatformInfo.distrib = platform.linux_distribution()
+            else:
+                GetPlatformInfo.distrib = distro.linux_distribution()
         elif GetPlatformInfo.system == 'Darwin':
-            GetPlatformInfo.distro = ('Darwin', '', '')
+            GetPlatformInfo.distrib = ('Darwin', '', '')
         else:
-            GetPlatformInfo.distro = ('Unknown', '', '')
+            GetPlatformInfo.distrib = ('Unknown', '', '')
 
-    return GetPlatformInfo.distro
+    return GetPlatformInfo.distrib
 
 def GetPyVersion(env):
     pyver = env.get('contrail_py_version', '0.1.dev0')
@@ -70,11 +77,11 @@ def PlatformExclude(env, **kwargs):
     if 'platform_exclude' not in kwargs:
         return False
 
-    distro = env.GetPlatformInfo()
-    this_ver = LooseVersion(distro[1])
+    distrib = env.GetPlatformInfo()
+    this_ver = LooseVersion(distrib[1])
 
     for (k, v) in kwargs['platform_exclude']:
-        if distro[0] != k:
+        if distrib[0] != k:
             continue
         excl_ver = LooseVersion(v)
         if this_ver >= excl_ver:

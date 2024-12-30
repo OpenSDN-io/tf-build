@@ -16,27 +16,13 @@ env = rules.SetupBuildEnvironment(conf)
 
 SConscript(dirs=['src/contrail-common', 'controller', 'vrouter'])
 
-
-
 if os.path.exists('openstack/nova_contrail_vif/SConscript'):
     SConscript('openstack/nova_contrail_vif/SConscript',
                variant_dir='build/noarch/nova_contrail_vif')
 
-if os.path.exists("openstack/contrail-nova-extensions/contrail_network_api/SConscript"):
-    SConscript('openstack/contrail-nova-extensions/contrail_network_api/SConscript',
-               variant_dir='build/noarch/contrail_nova_networkapi')
-
 if os.path.exists('openstack/neutron_plugin/SConscript'):
     SConscript('openstack/neutron_plugin/SConscript',
                variant_dir='build/noarch/neutron_plugin')
-
-if os.path.exists("openstack/ceilometer_plugin/SConscript"):
-    SConscript('openstack/ceilometer_plugin/SConscript',
-               variant_dir='build/noarch/ceilometer_plugin')
-
-if os.path.exists("contrail-f5/SConscript"):
-    SConscript('contrail-f5/SConscript',
-               variant_dir='build/noarch/contrail-f5')
 
 if GetOption("describe-tests"):
     rules.DescribeTests(env, COMMAND_LINE_TARGETS)

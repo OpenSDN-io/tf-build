@@ -355,41 +355,6 @@ def setup_venv(env, target, venv_name, path=None, is_py3=False):
     return target
 
 
-def venv_add_pip_pkg(env, v, pkg_list):
-    venv = env[v[0]]
-
-    # pkg_list can contain absolute filenames or a pip package and version.
-    targets = []
-    for pkg in pkg_list:
-        result = pkg.split('==')
-        if result:
-            name = result[0]
-        else:
-            name = pkg
-        if name[0] != '/':
-            targets.append(name)
-
-    pip = "/bin/bash -c \"source %s/bin/activate 2>/dev/null; pip" % venv._path
-    cmd = env.Command(targets, None, '%s install %s"' % (pip, ' '.join(pkg_list)))
-    env.AlwaysBuild(cmd)
-    env.Depends(cmd, venv)
-    return cmd
-
-
-def venv_add_build_pkg(env, v, pkg):
-    cmd = []
-    venv = env[v[0]]
-    for p in pkg:
-        t = 'build-' + p.replace('/', '_')
-        cmd += env.Command(
-            t, '',
-            '/bin/bash -c "source %s/bin/activate; pushd %s && python3 setup.py install; popd"' % (
-                venv._path, p))
-    env.AlwaysBuild(cmd)
-    env.Depends(cmd, venv)
-    return cmd
-
-
 def PyTestSuite(env, target, source, venv=None):
     if 'BUILD_ONLY' in env['ENV']:
         return target
@@ -1180,13 +1145,6 @@ def PlatformDarwin(env):
                         ])
 
 
-def build_maven(env, target, source, path):
-    mvn_target = env.Command(target, source, 'cd ' + str(path) + ' && mvn install')
-    env.AlwaysBuild(mvn_target)
-    env.Default(mvn_target)
-    return mvn_target
-
-
 # Decide whether to use parallel build, and determine value to use/set.
 # Controlled by environment var CONTRAIL_BUILD_JOBS:
 #    if set to 'no' or 1, then no parallel build
@@ -1443,9 +1401,6 @@ def SetupBuildEnvironment(conf):
     env.Append(BUILDERS={'GenerateBuildInfoCCode': GenerateBuildInfoCCode})
 
     env.Append(BUILDERS={'setup_venv': setup_venv})
-    env.Append(BUILDERS={'venv_add_pip_pkg': venv_add_pip_pkg})
-    env.Append(BUILDERS={'venv_add_build_pkg': venv_add_build_pkg})
-    env.Append(BUILDERS={'build_maven': build_maven})
 
     # A few methods to enable/support UTs and BUILD_ONLY
     env.AddMethod(GetVncAPIPkg, 'GetVncAPIPkg')

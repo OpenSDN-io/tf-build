@@ -58,17 +58,7 @@ def GetPlatformInfo(env):
     return GetPlatformInfo.distrib
 
 def GetPyVersion(env):
-    pyver = env.get('contrail_py_version', '0.1.dev0')
-    try:
-        # ubi8 always automatically convert version on build
-        from setuptools.extern import packaging
-        v = packaging.version.Version(pyver)
-        if pyver != v:
-            print("WARN: use new versioning scheme %s instead of %s" % (v, pyver))
-            pyver = v
-    except:
-        pass
-    return pyver
+    return '0.1.dev0'
 
 def PlatformExclude(env, **kwargs):
     """
@@ -211,8 +201,7 @@ def TestSuite(env, target, source):
 
 
 def GetVncAPIPkg(env):
-    _, v = env.GetBuildVersion()
-    return '/api-lib/dist/contrail-api-client-%s.tar.gz' % v
+    return '/api-lib/dist/contrail-api-client-0.1.dev0.tar.gz'
 
 
 pyver = GetPyVersion(dict())

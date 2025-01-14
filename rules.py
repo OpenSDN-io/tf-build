@@ -11,7 +11,6 @@ from SCons.Errors import convert_to_BuildError, BuildError
 from SCons.Script import AddOption, GetOption, SetOption
 from SCons.Node import Alias
 from distutils.spawn import find_executable
-from distutils.version import LooseVersion
 import SCons.Util
 import subprocess
 import sys
@@ -20,14 +19,9 @@ import time
 import platform
 import getpass
 import warnings
-import errno
 import shlex
 import multiprocessing
 
-try:
-    import distro
-except ImportError:
-    pass
 
 def _ensure_str(s):
     if isinstance(s, bytes):
@@ -35,48 +29,8 @@ def _ensure_str(s):
     return s
 
 
-def GetPlatformInfo(env):
-    '''
-    Returns same 3-tuple as platform.dist()/platform.linux_distribution() (caches tuple)
-    '''
-    GetPlatformInfo.__dict__.setdefault('system', None)
-    GetPlatformInfo.__dict__.setdefault('distrib', None)
-    if not GetPlatformInfo.system:
-        GetPlatformInfo.system = platform.system()
-
-    if not GetPlatformInfo.distrib:
-        if GetPlatformInfo.system == 'Linux':
-            if hasattr(platform, 'linux_distribution'):
-                GetPlatformInfo.distrib = platform.linux_distribution()
-            else:
-                GetPlatformInfo.distrib = distro.linux_distribution()
-        elif GetPlatformInfo.system == 'Darwin':
-            GetPlatformInfo.distrib = ('Darwin', '', '')
-        else:
-            GetPlatformInfo.distrib = ('Unknown', '', '')
-
-    return GetPlatformInfo.distrib
-
 def GetPyVersion(env):
     return '0.1.dev0'
-
-def PlatformExclude(env, **kwargs):
-    """
-    Return True if platform_excludes list includes a tuple that matches this host/version
-    """
-    if 'platform_exclude' not in kwargs:
-        return False
-
-    distrib = env.GetPlatformInfo()
-    this_ver = LooseVersion(distrib[1])
-
-    for (k, v) in kwargs['platform_exclude']:
-        if distrib[0] != k:
-            continue
-        excl_ver = LooseVersion(v)
-        if this_ver >= excl_ver:
-            return True
-    return False
 
 
 def GetTestEnvironment(test):
@@ -351,24 +305,6 @@ def setup_venv(env, target, venv_name, path=None, is_py3=False):
     return target
 
 
-def PyTestSuite(env, target, source, venv=None):
-    if 'BUILD_ONLY' in env['ENV']:
-        return target
-    for test in source:
-        log = test + '.log'
-        if venv:
-            try:
-                env['_venv'][log] = venv[0]
-            except KeyError:
-                env['_venv'] = {log: venv[0]}
-        cmd = env.Command(log, test, RunUnitTest)
-        if venv:
-            env.Depends(cmd, venv)
-        env.AlwaysBuild(cmd)
-        env.Alias(target, cmd)
-    return target
-
-
 def UnitTest(env, name, sources, **kwargs):
     test_env = env.Clone()
 
@@ -377,25 +313,7 @@ def UnitTest(env, name, sources, **kwargs):
             'NO_HEAPCHECK' not in env['ENV'] and env.get('OPT') != 'valgrind':
         test_env.Append(LIBPATH='#/build/lib')
         test_env.Append(LIBS=['tcmalloc'])
-    test_exe_list = test_env.Program(name, sources)
-    if test_env.PlatformExclude(**kwargs):
-        for t in test_exe_list:
-            t.attributes.skip_run = True
-    return test_exe_list
-
-
-# Returns True if the build is being done by a CI job,
-# by Jenkins, or some other official or automated build
-def IsAutomatedBuild():
-    return 'ZUUL_CHANGES' in os.environ or 'BUILD_BRANCH' in os.environ
-
-
-# Return True if we want quiet/short CLI echo for gcc/g++/gld/etc
-# Default is same as IsAutomatedBuild(), but we return
-# false if BUILD_QUIET is set to something that looks like "true"
-def WantQuietOutput():
-    v = os.environ.get('BUILD_QUIET', IsAutomatedBuild())
-    return v in [True, "True", "TRUE", "true", "yes", "1"]
+    return test_env.Program(name, sources)
 
 
 # we are not interested in source files for the dependency, but rather
@@ -406,11 +324,12 @@ def WantQuietOutput():
 def GenerateBuildInfoCode(env, target, source, path):
     o = env.Command(target=target, source=[], action=BuildInfoAction)
 
+    # TODO: re-think this
     # if we are running under CI or jenkins-driven CB/OB build,
     # we do NOT want to use AlwaysBuild, as it triggers unnecessary
     # rebuilds.
-    if not IsAutomatedBuild():
-        env.AlwaysBuild(o)
+    # if IsAutomatedBuild:
+    env.AlwaysBuild(o)
 
     return
 
@@ -426,7 +345,7 @@ def GetBuildVersion(env):
                              stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE,
                              shell='True')
-        git_hash, err = p.communicate()
+        git_hash, _ = p.communicate()
         git_hash = _ensure_str(git_hash).strip()
     else:
         # Or should we look for vrouter, tools/build, or ??
@@ -930,21 +849,18 @@ def SandeshGenPyFunc(env, path, target='', gen_py=True):
 
 
 # Golang Methods for CNI
-def GoCniFunc(env, filepath, target=''):
+def GoBuildFunc(env, mod_path, target):
     # get dependencies
     goenv = os.environ.copy()
-    goenv['GOROOT'] = env.Dir('#/third_party/go').abspath
-    goenv['GOPATH'] = env.Dir('#/third_party/cni_go_deps').abspath
+    goenv['GOROOT'] = "/usr/local/go"
     goenv['GOBIN'] = env.Dir(env['TOP'] + '/container/cni/bin').abspath
-    cni_path = env.Dir('#/' + env.Dir('.').srcnode().path).abspath
-    go_cmd = goenv['GOROOT'] + '/bin/go '
-    try:
-        cmd = 'cd ' + cni_path + ';'
-        cmd += go_cmd + 'install'
-        _ = subprocess.call(cmd, shell=True, env=goenv)
-    except Exception as e:
-        print(str(e))
-    return env['TOP'] + '/container/cni/bin/' + filepath
+
+    cmd = 'cd ' + mod_path + '; '
+    cmd += goenv['GOROOT'] + '/bin/go install -ldflags "-s -w" ' + target
+    code = subprocess.call(cmd, shell=True, env=goenv)
+    if code != 0:
+        raise SCons.Errors.StopError(SandeshCodeGeneratorError,
+                                    'go install failed')
 
 
 def IFMapBuilderCmd(source, target, env, for_signature):
@@ -1043,102 +959,11 @@ def VerifyClVersion():
     return our_cl_version >= minimum_cl_version
 
 
-def PyTestSuiteCov(target, source, env):
-    for test in source:
-        log = test.name + '.log'
-        if env['env_venv']:
-            venv = env['env_venv']
-            try:
-                env['_venv'][log] = venv[0]
-            except KeyError:
-                env['_venv'] = {log: venv[0]}
-        logfile = test.path + '.log'
-        RunUnitTest(env, [env.File(logfile)], [env.File(test)], 800)
-    return None
-
-
-def UseSystemBoost(env):
-    """
-    Whether to use the boost library provided by the system.
-    """
-    (distname, version, _) = env.GetPlatformInfo()
-    exclude_dist = {
-        'SUSE Linux Enterprise Desktop ': '12',
-        'SUSE Linux Enterprise Server ': '12',
-        'redhat': '7.0',
-        'Red Hat Enterprise Linux Server': '7.0',
-        'Red Hat Enterprise Linux': '8.0',
-    }
-    v_required = exclude_dist.get(distname)
-    if v_required and LooseVersion(version) >= LooseVersion(v_required):
-        return True
-    return False
-
-
-def UseSystemTBB(env):
-    """ Return True whenever the compilation uses the built-in version of the
-    Thread-Building Block library instead of compiling it.
-    """
-    systemTBBdict = {
-        'Ubuntu': '14.04',
-        'debian': '8',
-        'raspbian': '8',
-        'centos': '7.0',
-        'CentOS Linux': '7.0',
-        'fedora': '20',
-        'Fedora': '20',
-        'redhat': '7.0',
-        'Red Hat Enterprise Linux Server': '7.0',
-        'Red Hat Enterprise Linux': '8.0',
-    }
-    (distname, version, _) = env.GetPlatformInfo()
-    v_required = systemTBBdict.get(distname)
-    if v_required and LooseVersion(version) >= LooseVersion(v_required):
-        return True
-    return False
-
-
-def CppDisableExceptions(env):
-    if not UseSystemBoost(env):
-        env.AppendUnique(CCFLAGS='-fno-exceptions')
-
-
 def CppEnableExceptions(env):
     cflags = env['CCFLAGS']
     if '-fno-exceptions' in cflags:
         cflags.remove('-fno-exceptions')
         env.Replace(CCFLAGS=cflags)
-
-
-def PlatformDarwin(env):
-    cmd = 'sw_vers | \grep ProductVersion' # noqa
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stdin=subprocess.PIPE, shell=True)
-    ver, _ = p.communicate()
-    ver = _ensure_str(ver)
-    ver = ver.rstrip('\n')
-    ver = re.match(r'ProductVersion:\s+(\d+\.\d+)', ver).group(1)
-    if float(ver) >= 10.9:
-        return
-
-    if 'SDKROOT' not in env['ENV']:
-        # Find Mac SDK version.
-        sdk = '/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX' + ver + '.sdk'
-        env['ENV']['SDKROOT'] = sdk
-
-    if 'DEVELOPER_BIN_DIR' not in env['ENV']:
-        env['ENV']['DEVELOPER_BIN_DIR'] = '/Applications/Xcode.app/Contents/Developer/usr/bin'
-
-    env.AppendENVPath('PATH', env['ENV']['DEVELOPER_BIN_DIR'])
-
-    if 'DT_TOOLCHAIN_DIR' not in env['ENV']:
-        env['ENV']['DT_TOOLCHAIN_DIR'] = '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain'
-
-    env.AppendENVPath('PATH', env['ENV']['DT_TOOLCHAIN_DIR'] + '/usr/bin')
-
-    env['CXX'] = 'clang++'
-    env.Append(CPPPATH=[env['ENV']['SDKROOT'] + '/usr/include',
-                        env['ENV']['SDKROOT'] + '/usr/include/c++/4.2.1',
-                        ])
 
 
 # Decide whether to use parallel build, and determine value to use/set.
@@ -1227,8 +1052,6 @@ def SetupBuildEnvironment(conf):
 
     env = CheckBuildConfiguration(conf)
 
-    env.AddMethod(PlatformExclude, "PlatformExclude")
-    env.AddMethod(GetPlatformInfo, "GetPlatformInfo")
     env.AddMethod(GetPyVersion, "GetPyVersion")
 
     # Let's decide how many jobs (-jNN) we should use.
@@ -1301,28 +1124,7 @@ def SetupBuildEnvironment(conf):
     env['INSTALL_EXAMPLE'] += '/usr/share/contrail'
     env['INSTALL_DOC'] += '/usr/share/doc'
 
-    # Sometimes we don't need or want full CLI's
-    if WantQuietOutput():
-        env['ARCOMSTR'] = 'AR $TARGET'
-        env['CCCOMSTR'] = 'CC $TARGET'
-        env['CXXCOMSTR'] = 'C++ $TARGET'
-        env['INSTALLSTR'] = 'Install $SOURCE -> $TARGET'
-        env['LINKCOMSTR'] = 'LD $TARGET'
-        env['RANLIBCOMSTR'] = 'RANLIB $TARGET'
-        env['SHCCCOMSTR'] = 'CC $TARGET [shared]'
-        env['SHCXXCOMSTR'] = 'C++ $TARGET [shared]'
-        env['SHDLINKCOMSTR'] = 'LD $TARGET [shared]'
-
-    distribution = env.GetPlatformInfo()[0]
-
-    if distribution in ["Ubuntu", "debian", "raspbian"]:
-        env['PYTHON_INSTALL_OPT'] += '--install-layout=deb '
-
-    if distribution == 'Darwin':
-        PlatformDarwin(env)
-        env['ENV_SHLIB_PATH'] = 'DYLD_LIBRARY_PATH'
-    else:
-        env['ENV_SHLIB_PATH'] = 'LD_LIBRARY_PATH'
+    env['ENV_SHLIB_PATH'] = 'LD_LIBRARY_PATH'
 
     if env.get('TARGET_MACHINE') == 'i686':
         env.Append(CCFLAGS='-march=' + 'i686')
@@ -1389,7 +1191,6 @@ def SetupBuildEnvironment(conf):
         env.Append(CCFLAGS='-g')
         env.Append(LINKFLAGS='-g')
 
-    env.Append(BUILDERS={'PyTestSuite': PyTestSuite})
     env.Append(BUILDERS={'TestSuite': TestSuite})
     env.Append(BUILDERS={'UnitTest': UnitTest})
     env.Append(BUILDERS={'GenerateBuildInfoCode': GenerateBuildInfoCode})
@@ -1416,26 +1217,16 @@ def SetupBuildEnvironment(conf):
     env.AddMethod(SandeshGenCFunc, "SandeshGenC")
     env.AddMethod(SandeshGenPyFunc, "SandeshGenPy")
     env.AddMethod(SandeshGenDocFunc, "SandeshGenDoc")
-    env.AddMethod(GoCniFunc, "GoCniBuild")
     env.AddMethod(GoBuildFunc, "GoBuild")
-    env.AddMethod(GoModFunc, "GoMod")
-    env.AddMethod(GoTestFunc, "GoTest")
     env.AddMethod(SchemaSyncFunc, "SyncSchema")
     CreateIFMapBuilder(env)
     CreateTypeBuilder(env)
     CreateDeviceAPIBuilder(env)
 
-    PyTestSuiteCovBuilder = Builder(action=PyTestSuiteCov)
-    env.Append(BUILDERS={'PyTestSuiteCov': PyTestSuiteCovBuilder})
-
-    # Not used?
     symlink_builder = Builder(action="cd ${TARGET.dir} && " +
                               "ln -s ${SOURCE.file} ${TARGET.file}")
     env.Append(BUILDERS={'Symlink': symlink_builder})
 
-    env.AddMethod(UseSystemBoost, "UseSystemBoost")
-    env.AddMethod(UseSystemTBB, "UseSystemTBB")
-    env.AddMethod(CppDisableExceptions, "CppDisableExceptions")
     env.AddMethod(CppEnableExceptions, "CppEnableExceptions")
 
     return env
@@ -1489,137 +1280,6 @@ def DescribeAliases():
         print(alias)
 
 
-def GoSetupCommon(env, goCommand='', changeWorkingDir=True,
-                  workingDir=None, retries=1, log_file=None):
-    if not env.Detect('go'):
-        raise SCons.Errors.StopError('No go command detected on system')
-
-    if goCommand != '':
-        args = shlex.split(goCommand)
-        if not changeWorkingDir:
-            workingDir = None
-        popen_env = env['ENV']
-        popen_env['GOROOT'] = env.Dir('#/third_party/go').abspath
-        popen_env['GOPATH'] = env.Dir('#/controller').abspath
-        max_tries = retries
-        while retries:
-            retries -= 1
-            try:
-                print("Trying (%s) attempt(%s of %s)..." % (
-                      goCommand, (max_tries - retries), max_tries))
-                process = subprocess.Popen(args,
-                                           cwd=workingDir,
-                                           stdout=subprocess.PIPE,
-                                           stderr=subprocess.STDOUT,
-                                           stdin=subprocess.PIPE,
-                                           env=popen_env)
-                # Write stdout to file,stdout and out variable as soon as it is
-                # available
-                out = ""
-                with process.stdout:
-                    if log_file:
-                        with open(log_file, "a+") as fd:
-                            for line in iter(process.stdout.readline, b''):
-                                out += line
-                                sys.stdout.write(line)
-                                fd.write(line)
-                    else:
-                        for line in iter(process.stdout.readline, b''):
-                            out += line
-                            sys.stdout.write(line)
-                process.wait()
-                if process.returncode != 0:
-                    if not retries:
-                        raise SCons.Errors.StopError(goCommand + ' failed')
-                else:
-                    return out
-            except Exception as e:
-                raise SCons.Errors.StopError(
-                    goCommand + ' got exception' + str(e))
-
-
-def GoModule(target, source, env):
-    gomod_cmd = "go mod " + env['GOMOD_SUBCMD']
-    source_dir = env.Dir(str(source[0]).rsplit('/', 1)[0] + "/").abspath
-    GoSetupCommon(
-        env,
-        gomod_cmd,
-        True,
-        source_dir,
-        retries=env['GOMOD_RETRIES'],
-        log_file=str(
-            target[0].abspath))
-
-
-def GoSconsEnvModFunc(env):
-    gomod = Builder(action=GoModule)
-    env.Append(BUILDERS={'GoSconsMod': gomod})
-
-
-def GoModFunc(env, source, target, sub_cmd='tidy', retries=1):
-    env['GOMOD_SUBCMD'] = sub_cmd
-    env['GOMOD_RETRIES'] = retries
-    GoSconsEnvModFunc(env)
-    return env.GoSconsMod(target, source)
-
-
-def GoBuilder(target, source, env):
-    gobuild_cmd = "go build -a -ldflags \"-B 0x767ec1a0fea882d05faf39b84c29ea9878808f1d\" -o " + \
-        str(target[0].abspath) + " " + str(source[0].abspath)
-    source_dir = env.Dir(str(source[0]).rsplit('/', 1)[0] + "/").abspath
-    GoSetupCommon(env, gobuild_cmd, True, source_dir)
-
-
-def GoSconsEnvBuildFunc(env):
-    gobuild = Builder(action=GoBuilder)
-    env.Append(BUILDERS={'GoSconsBuild': gobuild})
-
-
-def GoBuildFunc(env, source, target):
-    GoSconsEnvBuildFunc(env)
-    target_path = env.Dir(str(target).rsplit('/', 1)[0] + "/").abspath
-    MkdirP(target_path)
-    return env.GoSconsBuild(target, source)
-
-
-def GoListTestDirs(env):
-    """Lists directories that contain _test.go files
-       either inside Go package (.TestGoFiles) or
-       outside Go package (.XTestGoFiles, e.g. in "foo_test" package)
-    """
-    golist_cmd = "go list -f '{{if (or .TestGoFiles .XTestGoFiles)}}{{.Dir}}{{end}}' ./..."
-    test_dirs = GoSetupCommon(env, golist_cmd, True, env['GO_TEST_ROOT'])
-    return " ".join(test_dirs.split("\n"))
-
-
-def GoTester(target, source, env):
-    test_root = env['GO_TEST_ROOT']
-    gotest_cmd = 'go test -v %s' % GoListTestDirs(env)
-    GoSetupCommon(env, gotest_cmd, True, str(test_root),
-                  log_file=str(target[0].abspath))
-
-
-def GoSconsEnvTestFunc(env):
-    gotest = Builder(action=GoTester)
-    env.Append(BUILDERS={'GoSconsTest': gotest})
-
-
-def GoTestFunc(env, target, test_root):
-    env['GO_TEST_ROOT'] = test_root
-    GoSconsEnvTestFunc(env)
-    return env.GoSconsTest(target, None)
-
-
-def MkdirP(path):
-    try:
-        os.makedirs(path)
-    except OSError as exc:  # Python >2.5
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
-
-
 def SchemaSyncBuilder(target, source, env):
     target_path = env.Dir(str(target[0]).rsplit('/', 1)[0] + "/").abspath
     # generate yaml schema
@@ -1664,9 +1324,3 @@ def SchemaSyncSconsEnvBuildFunc(env):
 def SchemaSyncFunc(env, target, source):
     SchemaSyncSconsEnvBuildFunc(env)
     return env.SchemaSyncSconsBuild(target, source)
-
-
-def FromBytes(data):
-    if isinstance(data, bytes):
-        return data.decode()
-    return data

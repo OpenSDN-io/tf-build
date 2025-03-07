@@ -863,6 +863,20 @@ def GoBuildFunc(env, mod_path, target):
                                     'go install failed')
 
 
+def GoUnitTest(env, mod_path):
+    # get dependencies
+    goenv = os.environ.copy()
+    goenv['GOROOT'] = "/usr/local/go"
+    goenv['GOBIN'] = env.Dir(env['TOP'] + '/container/cni/bin').abspath
+
+    cmd = 'cd ' + mod_path + '; '
+    cmd += goenv['GOROOT'] + '/bin/go test -count 1 -gcflags=-l ./...'
+    code = subprocess.call(cmd, shell=True, env=goenv)
+    if code != 0:
+        raise SCons.Errors.StopError(SandeshCodeGeneratorError,
+                                    'go test failed')
+
+
 def IFMapBuilderCmd(source, target, env, for_signature):
     output = Basename(source[0].abspath)
     return '%s -f -g ifmap-backend -o %s %s' % (env.File('#src/contrail-api-client/generateds/generateDS.py').abspath, output, source[0])
@@ -1218,6 +1232,7 @@ def SetupBuildEnvironment(conf):
     env.AddMethod(SandeshGenPyFunc, "SandeshGenPy")
     env.AddMethod(SandeshGenDocFunc, "SandeshGenDoc")
     env.AddMethod(GoBuildFunc, "GoBuild")
+    env.AddMethod(GoUnitTest, "GoUnitTest")
     env.AddMethod(SchemaSyncFunc, "SyncSchema")
     CreateIFMapBuilder(env)
     CreateTypeBuilder(env)

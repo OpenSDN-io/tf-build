@@ -63,10 +63,6 @@ def RunUnitTest(env, target, source, timeout=300):
     if '_venv' in env and tgt in env['_venv'] and env['_venv'][tgt]:
         cmd = ['/bin/bash', '-c', 'source %s/bin/activate && %s' % (
                env[env['_venv'][tgt]]._path, test)]
-    elif env.get('OPT') == 'valgrind':
-        cmd = ['valgrind', '--track-origins=yes', '--num-callers=50',
-               '--show-possibly-lost=no', '--leak-check=full',
-               '--error-limit=no', test]
     else:
         cmd = [test]
 
@@ -195,21 +191,17 @@ def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
     # if BUILD_ONLY, we create a "pass through" dependency... the test target will end up depending
     # (only) on the original sdist target
     if 'BUILD_ONLY' in env['ENV']:
-        test_cmd = cov_cmd = sdist_target
+        test_cmd = sdist_target
     else:
         if use_tox:
             test_cmd = 'tox'
-            cov_cmd = test_cmd + ' -e cover'
             skipfile = GetOption('skip_tests')
             if skipfile and os.path.isfile(skipfile):
                 test_cmd += ' -- --blacklist-file ' + skipfile
-                cov_cmd += ' -- --blacklist-file ' + skipfile
         else:
             # NOTE: there is no UT skips in this case. But this case is not used in the code now.
             test_cmd = 'python3 setup.py run_tests'
-            cov_cmd = test_cmd + ' --coverage'
         test_cmd = env.Command('test.log', sdist_target, cmd_base % (test_cmd, "test"))
-        cov_cmd = env.Command('coveragetest.log', sdist_target, cmd_base % (cov_cmd, 'coveragetest'))
 
     # If *args is not empty, move all arguments to kwargs['sdist_depends']
     # and issue a warning. Also make sure we are not using old and new method
@@ -239,18 +231,15 @@ def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
     else:
         full_depends = _rewrite_file_dependencies(kwargs['sdist_depends'])
 
-    # When BUILD_ONLY is defined, test_cmd and cov_cmd are replaced with
+    # When BUILD_ONLY is defined, test_cmd is replaced with
     # sdist_target - that can lead to circular dependencies when tests
     # depend on other components.
     if 'BUILD_ONLY' not in env['ENV']:
         env.Depends(test_cmd, full_depends)
-        env.Depends(cov_cmd, full_depends)
 
     d = env.Dir('.').srcnode().path
     env.Alias(d + ':test', test_cmd)
-    env.Alias(d + ':coverage', cov_cmd)
     # env.Depends('test', test_cmd) # XXX This may need to be restored
-    env.Depends('coverage', cov_cmd)
 
     xml_path = env.Dir(".").abspath + "/test-results.xml"
     log_path = env.Dir(".").abspath + "/test.log"
@@ -308,9 +297,7 @@ def setup_venv(env, target, venv_name, path=None, is_py3=False):
 def UnitTest(env, name, sources, **kwargs):
     test_env = env.Clone()
 
-    # Do not link with tcmalloc when running under valgrind/coverage env.
-    if sys.platform not in ['darwin'] and env.get('OPT') != 'coverage' and \
-            'NO_HEAPCHECK' not in env['ENV'] and env.get('OPT') != 'valgrind':
+    if 'NO_HEAPCHECK' not in env['ENV']:
         test_env.Append(LIBPATH='#/build/lib')
         test_env.Append(LIBS=['tcmalloc'])
     return test_env.Program(name, sources)
@@ -1038,8 +1025,8 @@ def EnsureBuildDependency(env, dependency):
 def SetupBuildEnvironment(conf):
     AddOption('--optimization', '--opt', dest='opt',
               action='store', default='debug',
-              choices=['debug', 'production', 'coverage', 'profile', 'valgrind'],
-              help='optimization level: [debug|production|coverage|profile|valgrind]')
+              choices=['debug', 'production', 'profile'],
+              help='optimization level: [debug|production|profile]')
 
     AddOption('--target', dest='target',
               action='store', default='x86_64',
@@ -1193,13 +1180,6 @@ def SetupBuildEnvironment(conf):
         env.Append(CCFLAGS=['-O3', '-DDEBUG', '-pg'])
         env.Append(LINKFLAGS=['-pg'])
         env['TOP'] = '#build/profile'
-    elif opt_level == 'coverage':
-        env.Append(CCFLAGS=['-O0', '--coverage'])
-        env['TOP'] = '#build/coverage'
-        env.Append(LIBS='gcov')
-    elif opt_level == 'valgrind':
-        env.Append(CCFLAGS=['-O0', '-DDEBUG'])
-        env['TOP'] = '#build/valgrind'
 
     if "CONTRAIL_COMPILE_WITHOUT_SYMBOLS" not in os.environ:
         env.Append(CCFLAGS='-g')

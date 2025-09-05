@@ -841,6 +841,7 @@ def GoBuildFunc(env, mod_path, target):
     goenv = os.environ.copy()
     goenv['GOROOT'] = "/usr/local/go"
     goenv['GOBIN'] = env.Dir(env['TOP'] + '/container/cni/bin').abspath
+    goenv['CGO_ENABLED'] = '0'
 
     cmd = 'cd ' + mod_path + '; '
     cmd += goenv['GOROOT'] + '/bin/go install -ldflags "-s -w" ' + target

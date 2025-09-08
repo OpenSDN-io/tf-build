@@ -197,7 +197,7 @@ def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
             test_cmd = 'tox'
             skipfile = GetOption('skip_tests')
             if skipfile and os.path.isfile(skipfile):
-                test_cmd += ' -- --blacklist-file ' + skipfile
+                test_cmd += ' -- --exclude-list ' + skipfile
         else:
             # NOTE: there is no UT skips in this case. But this case is not used in the code now.
             test_cmd = 'python3 setup.py run_tests'

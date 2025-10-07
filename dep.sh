@@ -13,11 +13,8 @@ dnf install -y cassandra-cpp-driver cassandra-cpp-driver-devel \
   libstdc++-devel libxml2-devel lz4-devel protobuf protobuf-compiler protobuf-devel \
   systemd-units tbb-devel tokyocabinet-devel zlib-devel libcmocka-devel libxslt-devel
 
-# not sure
-# cyrus-sasl-devel
-
 # dpdk
-dnf install -y liburcu-devel numactl-devel libnl3-devel libpcap libpcap-devel "rdma-core-devel-47mlnx1-1.47329"
+dnf install -y numactl-devel libnl3-devel libpcap libpcap-devel "rdma-core-devel-47mlnx1-1.47329"
 
 # webui
 dnf install -y "nodejs-1:16.20.2" "npm-1:8.19.4"

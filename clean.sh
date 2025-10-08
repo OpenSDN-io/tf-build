@@ -6,7 +6,8 @@ set -e; set -o pipefail; set -m
 set -x
 
 my_dir=$(realpath $(dirname "$0"))
-src_root=$(dirname $(dirname "$my_dir"))
-buildroot="$src_root/buildroot"
 
-rm -rf $buildroot || /bin/true
+# folder with built binaries/libs/docs/data/... files from tf-dev-sandbox container
+export BUILD_ROOT=${BUILD_ROOT:-'/buildroot'}
+
+rm -rf $BUILD_ROOT || /bin/true

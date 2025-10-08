@@ -10,27 +10,29 @@ set -x
 
 SCONS_OPT=${SCONS_OPT:-production}
 
+# folder with built binaries/libs/docs/data/... files from tf-dev-sandbox container
+export BUILD_ROOT=${BUILD_ROOT:-'/buildroot'}
+
 my_dir=$(realpath $(dirname "$0"))
 src_root=$(dirname $(dirname "$my_dir"))
-buildroot="$src_root/buildroot"
 
 src_ver=$(cat $src_root/controller/src/base/version.info)
 
-# now we are creating "buildroot" - it will be used in later "docker build" as a "multistage"
-rm -rf ${buildroot}/
-mkdir -p ${buildroot}/
-echo "$src_ver" > ${buildroot}/Version
+# now we are creating "BUILD_ROOT" - it will be used in later "docker build" as a "multistage"
+rm -rf ${BUILD_ROOT}/
+mkdir -p ${BUILD_ROOT}/
+echo "$src_ver" > ${BUILD_ROOT}/Version
 
-mkdir -p ${buildroot}/usr/bin/tools ${buildroot}/opt/contrail/ddp
-mkdir -p ${buildroot}/usr/bin ${buildroot}/usr/lib ${buildroot}/opt ${buildroot}/opt/python/opserver ${buildroot}/usr/bin/tools/
-mkdir -p ${buildroot}/usr/share/lua/ ${buildroot}/usr/local/share/wireshark/ ${buildroot}/usr/local/lib64/wireshark/plugins/
-mkdir -p ${buildroot}/usr/src/modules/
-mkdir -p ${buildroot}/usr/src/contrail/contrail-web-controller/ ${buildroot}/usr/src/contrail/contrail-web-core/
+mkdir -p ${BUILD_ROOT}/usr/bin/tools ${BUILD_ROOT}/opt/contrail/ddp
+mkdir -p ${BUILD_ROOT}/usr/bin ${BUILD_ROOT}/usr/lib ${BUILD_ROOT}/opt ${BUILD_ROOT}/opt/python/opserver ${BUILD_ROOT}/usr/bin/tools/
+mkdir -p ${BUILD_ROOT}/usr/share/lua/ ${BUILD_ROOT}/usr/local/share/wireshark/ ${BUILD_ROOT}/usr/local/lib64/wireshark/plugins/
+mkdir -p ${BUILD_ROOT}/usr/src/modules/
+mkdir -p ${BUILD_ROOT}/usr/src/contrail/contrail-web-controller/ ${BUILD_ROOT}/usr/src/contrail/contrail-web-core/
 
 pushd $src_root/
 build_jobs=$(nproc --ignore=1)
 # compile and pack most components
-scons -j "$build_jobs" --opt=$SCONS_OPT --root=${buildroot} --without-dpdk install
+scons -j "$build_jobs" --opt=$SCONS_OPT --root=${BUILD_ROOT} --without-dpdk install
 # dpdk stuff
 scons \
     --opt=$SCONS_OPT \
@@ -59,80 +61,78 @@ popd
 
 # contrail-docs
 # Move schema specific files to opserver
-for mod_dir in ${buildroot}/usr/share/doc/contrail-docs/html/messages/* ; do
+for mod_dir in ${BUILD_ROOT}/usr/share/doc/contrail-docs/html/messages/* ; do
     if [[ ! -d $mod_dir ]]; then
         continue
     fi
-    mkdir -p ${buildroot}/opt/python/opserver/stats_schema/$(basename $mod_dir)
-    for statsfile in ${buildroot}/usr/share/doc/contrail-docs/html/messages/$(basename $mod_dir)/*_stats_tables.json ; do
-        mv $statsfile ${buildroot}/opt/python/opserver/stats_schema/$(basename $mod_dir)/
+    mkdir -p ${BUILD_ROOT}/opt/python/opserver/stats_schema/$(basename $mod_dir)
+    for statsfile in ${BUILD_ROOT}/usr/share/doc/contrail-docs/html/messages/$(basename $mod_dir)/*_stats_tables.json ; do
+        mv $statsfile ${BUILD_ROOT}/opt/python/opserver/stats_schema/$(basename $mod_dir)/
     done
 done
 # Index files
-python3 $src_root/tools/build/generate_doc_index.py ${buildroot}/usr/share/doc/contrail-docs/html/messages
+python3 $src_root/tools/build/generate_doc_index.py ${BUILD_ROOT}/usr/share/doc/contrail-docs/html/messages
 
 # pack vrouter sources
-pushd ${buildroot}
+pushd ${BUILD_ROOT}
 cd usr/src/vrouter
 echo "$src_ver" > version
-tar -czf ${buildroot}/usr/src/modules/contrail-vrouter.tar.gz .
+tar -czf ${BUILD_ROOT}/usr/src/modules/contrail-vrouter.tar.gz .
 popd
-rm -rf ${buildroot}/usr/src/vrouter
+rm -rf ${BUILD_ROOT}/usr/src/vrouter
 
 ####################################################### dpdk stuff
-cp $src_root/build/$SCONS_OPT/vrouter/dpdk/contrail-vrouter-dpdk ${buildroot}/usr/bin/contrail-vrouter-dpdk
-cp $src_root/build/$SCONS_OPT/vrouter/dpdk/dpdk-devbind.py ${buildroot}/usr/bin/dpdk_nic_bind.py
-cp $src_root/vrouter/dpdk/ddp/mplsogreudp.pkg ${buildroot}/opt/contrail/ddp/mplsogreudp.pkg
+cp $src_root/build/$SCONS_OPT/vrouter/dpdk/contrail-vrouter-dpdk ${BUILD_ROOT}/usr/bin/contrail-vrouter-dpdk
+cp $src_root/build/$SCONS_OPT/vrouter/dpdk/dpdk-devbind.py ${BUILD_ROOT}/usr/bin/dpdk_nic_bind.py
+cp $src_root/vrouter/dpdk/ddp/mplsogreudp.pkg ${BUILD_ROOT}/opt/contrail/ddp/mplsogreudp.pkg
 # tools
-cp $src_root//build/$SCONS_OPT/vrouter/dpdk/x86_64-native-linuxapp-gcc/app/testpmd ${buildroot}/usr/bin/tools/testpmd
+cp $src_root//build/$SCONS_OPT/vrouter/dpdk/x86_64-native-linuxapp-gcc/app/testpmd ${BUILD_ROOT}/usr/bin/tools/testpmd
 
 N3KFLOW_DUMP_BINARY="$src_root/build/production/vrouter/dpdk/x86_64-native-linuxapp-gcc/build/app/n3kflow-dump/n3kflow-dump"
-cp "$N3KFLOW_DUMP_BINARY" ${buildroot}/usr/bin/n3kflow-dump
-cp $src_root/build/$SCONS_OPT/vrouter/dpdk/x86_64-native-linuxapp-gcc/app/n3k-info ${buildroot}/usr/bin/n3k-info
+cp "$N3KFLOW_DUMP_BINARY" ${BUILD_ROOT}/usr/bin/n3kflow-dump
+cp $src_root/build/$SCONS_OPT/vrouter/dpdk/x86_64-native-linuxapp-gcc/app/n3k-info ${BUILD_ROOT}/usr/bin/n3k-info
 ####################################################### dpdk stuff
 
 # contrail-manifest package
-cp $src_root/.repo/manifest.xml ${buildroot}/manifest.xml
+cp $src_root/.repo/manifest.xml ${BUILD_ROOT}/manifest.xml
 
 # opts section
 # TODO: change path in SConscript
-mv ${buildroot}/usr/bin/fabric_ansible_playbooks-0.1.dev0.tar.gz ${buildroot}/opt/
+mv ${BUILD_ROOT}/usr/bin/fabric_ansible_playbooks-0.1.dev0.tar.gz ${BUILD_ROOT}/opt/
 
-# for unknown reason most libs are aout of buildroot
-cp -a /root/work/build/lib/lib*.so* ${buildroot}/usr/lib/
+# for unknown reason most libs are aout of BUILD_ROOT
+cp -a /root/work/build/lib/lib*.so* ${BUILD_ROOT}/usr/lib/
 # TODO: change path in SConscript
-mv ${buildroot}/etc/contrail/dns/applynamedconfig.py ${buildroot}/usr/bin/
+mv ${BUILD_ROOT}/etc/contrail/dns/applynamedconfig.py ${BUILD_ROOT}/usr/bin/
 
 # TODO: change path in SConscript
-mv ${buildroot}/usr/bin/vrouter-port-control ${buildroot}/usr/bin/vrouter-port-control.py
+mv ${BUILD_ROOT}/usr/bin/vrouter-port-control ${BUILD_ROOT}/usr/bin/vrouter-port-control.py
 
 # vrouter tools
 # TODO: change path in SConscript
-mv ${buildroot}/usr/bin/dropstats ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/flow ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/mirror ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/mpls ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/nh ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/rt ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/vrfstats ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/vrcli ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/vxlan ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/vrouter ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/vrmemstats ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/vifdump ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/vrftable ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/vrinfo ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/dpdkinfo ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/dpdkconf ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/dpdkvifstats.py ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/sandump ${buildroot}/usr/bin/tools/
-mv ${buildroot}/usr/bin/pkt_droplog.py ${buildroot}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/dropstats ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/flow ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/mirror ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/mpls ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/nh ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/rt ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/vrfstats ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/vrcli ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/vxlan ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/vrouter ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/vrmemstats ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/vifdump ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/vrftable ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/vrinfo ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/dpdkinfo ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/dpdkconf ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/dpdkvifstats.py ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/sandump ${BUILD_ROOT}/usr/bin/tools/
+mv ${BUILD_ROOT}/usr/bin/pkt_droplog.py ${BUILD_ROOT}/usr/bin/tools/
 
 # TODO: change path in SConscript
-mv ${buildroot}/usr/share/contrail/*.lua ${buildroot}/usr/local/lib64/wireshark/plugins/
+mv ${BUILD_ROOT}/usr/share/contrail/*.lua ${BUILD_ROOT}/usr/local/lib64/wireshark/plugins/
 
 # webui
-cp -rp $src_root/contrail-web-controller/* ${buildroot}/usr/src/contrail/contrail-web-controller/
-cp -rp $src_root/contrail-web-core/* ${buildroot}/usr/src/contrail/contrail-web-core/
-
-ls -lR ${buildroot}/
+cp -rp $src_root/contrail-web-controller/* ${BUILD_ROOT}/usr/src/contrail/contrail-web-controller/
+cp -rp $src_root/contrail-web-core/* ${BUILD_ROOT}/usr/src/contrail/contrail-web-core/

@@ -177,15 +177,7 @@ sdist_default_depends = [
 #
 def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
     use_tox = kwargs['use_tox'] if 'use_tox' in kwargs else False
-
-    buildspace_link = os.environ.get('CONTRAIL_REPO')
-    if buildspace_link:
-        # in CI environment shebang limit exceeds for python
-        # in easy_install/pip, reach to it via symlink
-        top_dir = env.Dir(buildspace_link + '/' + env.Dir('.').path)
-    else:
-        top_dir = env.Dir('.')
-
+    top_dir = env.Dir('.')
     cmd_base = 'bash -c "set -o pipefail && cd ' + env.Dir(top_dir).path + ' && %s 2>&1 | tee %s.log"'
 
     # if BUILD_ONLY, we create a "pass through" dependency... the test target will end up depending
@@ -264,11 +256,7 @@ def SetupPyTestSuite(env, sdist_target, *args, **kwargs):
 def setup_venv(env, target, venv_name, path=None, is_py3=False):
     p = path
     if not p:
-        ws_link = os.environ.get('CONTRAIL_REPO')
-        if ws_link:
-            p = ws_link + "/build/" + env['OPT']
-        else:
-            p = env.Dir(env['TOP']).abspath
+        p = env.Dir(env['TOP']).abspath
 
     tdir = '/tmp/cache/%s/systemless_test' % getpass.getuser()
     shell_cmd = ' && '.join([

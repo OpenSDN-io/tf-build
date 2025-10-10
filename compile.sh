@@ -49,11 +49,13 @@ make package REPO=../contrail-web-core
 make package REPO=../contrail-web-controller,webController
 popd
 
+# TODO: move into SConscript
 # neutron plugin (outside of scons files as others)
 pushd $src_root/openstack/neutron_plugin
 python3 setup.py bdist_wheel --dist-dir /pip
 popd
 
+# TODO: move into SConscript
 # heat plugin (outside of scons files as others)
 pushd $src_root/openstack/contrail-heat
 python3 setup.py bdist_wheel --dist-dir /pip
@@ -96,42 +98,8 @@ cp $src_root/build/$SCONS_OPT/vrouter/dpdk/x86_64-native-linuxapp-gcc/app/n3k-in
 # contrail-manifest package
 cp $src_root/.repo/manifest.xml ${BUILD_ROOT}/manifest.xml
 
-# opts section
-# TODO: change path in SConscript
-mv ${BUILD_ROOT}/usr/bin/fabric_ansible_playbooks-0.1.dev0.tar.gz ${BUILD_ROOT}/opt/
-
-# for unknown reason most libs are aout of BUILD_ROOT
+# for 'unknown' reason most libs are out of BUILD_ROOT
 cp -a /root/work/build/lib/lib*.so* ${BUILD_ROOT}/usr/lib/
-# TODO: change path in SConscript
-mv ${BUILD_ROOT}/etc/contrail/dns/applynamedconfig.py ${BUILD_ROOT}/usr/bin/
-
-# TODO: change path in SConscript
-mv ${BUILD_ROOT}/usr/bin/vrouter-port-control ${BUILD_ROOT}/usr/bin/vrouter-port-control.py
-
-# vrouter tools
-# TODO: change path in SConscript
-mv ${BUILD_ROOT}/usr/bin/dropstats ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/flow ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/mirror ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/mpls ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/nh ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/rt ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/vrfstats ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/vrcli ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/vxlan ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/vrouter ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/vrmemstats ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/vifdump ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/vrftable ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/vrinfo ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/dpdkinfo ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/dpdkconf ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/dpdkvifstats.py ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/sandump ${BUILD_ROOT}/usr/bin/tools/
-mv ${BUILD_ROOT}/usr/bin/pkt_droplog.py ${BUILD_ROOT}/usr/bin/tools/
-
-# TODO: change path in SConscript
-mv ${BUILD_ROOT}/usr/share/contrail/*.lua ${BUILD_ROOT}/usr/local/lib64/wireshark/plugins/
 
 # webui
 cp -rp $src_root/contrail-web-controller/* ${BUILD_ROOT}/usr/src/contrail/contrail-web-controller/

@@ -177,7 +177,7 @@ sdist_default_depends = [
 #
 def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
     use_tox = kwargs['use_tox'] if 'use_tox' in kwargs else False
-    top_dir = env.Dir('.')
+    top_dir = kwargs['top_dir'] if 'top_dir' in kwargs else env.Dir('.')
     cmd_base = 'bash -c "set -o pipefail && cd ' + env.Dir(top_dir).path + ' && %s 2>&1 | tee %s.log"'
 
     # if BUILD_ONLY, we create a "pass through" dependency... the test target will end up depending

@@ -13,13 +13,10 @@ from SCons.Node import Alias
 from distutils.spawn import find_executable
 import SCons.Util
 import subprocess
-import sys
 import datetime
 import time
 import platform
 import getpass
-import warnings
-import shlex
 import multiprocessing
 
 
@@ -50,9 +47,6 @@ def GetTestEnvironment(test):
 
 
 def RunUnitTest(env, target, source, timeout=300):
-    if 'BUILD_ONLY' in env['ENV']:
-        return
-
     if 'CONTRAIL_UT_TEST_TIMEOUT' in env['ENV']:
         timeout = int(env['ENV']['CONTRAIL_UT_TEST_TIMEOUT'])
 
@@ -139,118 +133,36 @@ def TestSuite(env, target, source):
         isolated_env['GTEST_OUTPUT'] = 'xml:' + xml_path
         cmd = env.Command(log_path, test, RunUnitTest, ENV=isolated_env)
 
-        # If BUILD_ONLY set, do not alias foo.log target, to avoid
-        # invoking the RunUnitTest() as a no-op (i.e., this avoids
-        # some log clutter)
-        if 'BUILD_ONLY' in env['ENV']:
-            env.Alias(target, test)
-        else:
-            env.AlwaysBuild(cmd)
-            env.Alias(target, cmd)
+        env.AlwaysBuild(cmd)
+        env.Alias(target, cmd)
     return target
-
-
-def GetVncAPIPkg(env):
-    return '/api-lib/dist/contrail-api-client-0.1.dev0.tar.gz'
-
-
-pyver = GetPyVersion(dict())
-sdist_default_depends = [
-    '/config/common/dist/contrail-config-common-%s.tar.gz' % pyver,
-    '/tools/sandesh/library/python/dist/sandesh-%s.tar.gz' % pyver,
-    '/sandesh/common/dist/sandesh-common-%s.tar.gz' % pyver,
-]
 
 
 # SetupPyTestSuiteWithDeps
 #
-# Function to provide consistent 'python setup.py run_tests' interface
-#
-# The var *args is expected to contain a list of dependencies. If
-# *args is empty, then above sdist_default_depends + the vnc_api tgz
-# is used.
-#
-# This method is mostly to be used by SetupPyTestSuite(), but there
-# is one special-case instance (controller/src/api-lib) that needs
-# to use this builder directly, so that it can provide explicit list
-# of dependencies.
+# Function to provide consistent 'tox' interface
 #
 def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
-    use_tox = kwargs['use_tox'] if 'use_tox' in kwargs else False
-    top_dir = kwargs['top_dir'] if 'top_dir' in kwargs else env.Dir('.')
+    top_dir = kwargs['top_dir'] if 'top_dir' in kwargs else env.Dir('.').abspath
     cmd_base = 'bash -c "set -o pipefail && cd ' + env.Dir(top_dir).path + ' && %s 2>&1 | tee %s.log"'
 
-    # if BUILD_ONLY, we create a "pass through" dependency... the test target will end up depending
-    # (only) on the original sdist target
-    if 'BUILD_ONLY' in env['ENV']:
-        test_cmd = sdist_target
-    else:
-        if use_tox:
-            test_cmd = 'tox'
-            skipfile = GetOption('skip_tests')
-            if skipfile and os.path.isfile(skipfile):
-                test_cmd += ' -- --exclude-list ' + skipfile
-        else:
-            # NOTE: there is no UT skips in this case. But this case is not used in the code now.
-            test_cmd = 'python3 setup.py run_tests'
-        test_cmd = env.Command('test.log', sdist_target, cmd_base % (test_cmd, "test"))
+    test_cmd = 'tox'
+    skipfile = GetOption('skip_tests')
+    if skipfile and os.path.isfile(skipfile):
+        test_cmd += ' -- --exclude-list ' + skipfile
+    test_cmd = env.Command('test.log', sdist_target, cmd_base % (test_cmd, "test"))
 
-    # If *args is not empty, move all arguments to kwargs['sdist_depends']
-    # and issue a warning. Also make sure we are not using old and new method
-    # of passing dependencies.
-    if len(args) and 'sdist_depends' in kwargs:
-        print("Do not both pass dependencies as *args"
-              "and use sdist_depends at the same time.")
-        sys.exit(1)
+    if 'sdist_depends' in kwargs:
+        env.Depends(test_cmd, kwargs['sdist_depends'])
 
-    # during transition we have to support both types of targets
-    # as dependencies. This function allows us to mix both SCons targets
-    # and file paths.
-    def _rewrite_file_dependencies(deps):
-        """Update direct file dependencies to prepend build path"""
-        # file dependencies need absulute paths
-        file_depends = [env['TOP'] + x for x in deps if x.startswith('/')]
-        # explicitly define each target as Alias, in case it hasn't yet been
-        # defined in SConscript.
-        scons_depends = [env.Alias(x) for x in deps if not x.startswith('/')]
-        return file_depends + scons_depends
+    env.Alias(env.Dir('.').srcnode().path + ':test', test_cmd)
 
-    if len(args):
-        warnings.warn("Don't pass dependencies as arguments pointing"
-                      " to tarballs, instead pass scons aliases"
-                      " as sdist_depends.")
-        full_depends = _rewrite_file_dependencies(env.Flatten(args))
-    else:
-        full_depends = _rewrite_file_dependencies(kwargs['sdist_depends'])
+    env.tests.add_test(
+        env.Dir('.').abspath + "/test.log",
+        top_dir + "/test-results.xml",
+        top_dir + "/test.log")
 
-    # When BUILD_ONLY is defined, test_cmd is replaced with
-    # sdist_target - that can lead to circular dependencies when tests
-    # depend on other components.
-    if 'BUILD_ONLY' not in env['ENV']:
-        env.Depends(test_cmd, full_depends)
-
-    d = env.Dir('.').srcnode().path
-    env.Alias(d + ':test', test_cmd)
-    # env.Depends('test', test_cmd) # XXX This may need to be restored
-
-    xml_path = env.Dir(".").abspath + "/test-results.xml"
-    log_path = env.Dir(".").abspath + "/test.log"
-    env.tests.add_test(node_path=log_path, xml_path=xml_path, log_path=log_path)
-
-
-# SetupPyTestSuite()
-#
-# General entry point for setting up 'python setup.py run_tests'. If
-# using this method, the default dependencies are assumed. Any
-# additional arguments in *args are *additional* dependencies
-#
-def SetupPyTestSuite(env, sdist_target, *args, **kwargs):
-    sdist_depends = sdist_default_depends + [env.GetVncAPIPkg()]
-    if len(args):
-        sdist_depends += args
-
-    env.SetupPyTestSuiteWithDeps(sdist_target,
-                                 sdist_depends=sdist_depends, **kwargs)
+    return test_cmd
 
 
 def setup_venv(env, target, venv_name, path=None, is_py3=False):
@@ -305,8 +217,6 @@ def GenerateBuildInfoCode(env, target, source, path):
     # rebuilds.
     # if IsAutomatedBuild:
     env.AlwaysBuild(o)
-
-    return
 
 
 # If contrail-controller (i.e., #controller/) is present, determine
@@ -1002,7 +912,8 @@ class UnitTestsCollector(object):
 
     def add_test(self, node_path, xml_path, log_path):
         self.tests += [{
-            "node_path": node_path, "xml_path": xml_path,
+            "node_path": node_path,
+            "xml_path": xml_path,
             "log_path": log_path}]
 
 
@@ -1154,9 +1065,6 @@ def SetupBuildEnvironment(conf):
 
     env.Append(BUILDERS={'setup_venv': setup_venv})
 
-    # A few methods to enable/support UTs and BUILD_ONLY
-    env.AddMethod(GetVncAPIPkg, 'GetVncAPIPkg')
-    env.AddMethod(SetupPyTestSuite, 'SetupPyTestSuite')
     env.AddMethod(SetupPyTestSuiteWithDeps, 'SetupPyTestSuiteWithDeps')
     env.AddMethod(EnsureBuildDependency, 'EnsureBuildDependency')
 

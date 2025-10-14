@@ -49,18 +49,6 @@ make package REPO=../contrail-web-core
 make package REPO=../contrail-web-controller,webController
 popd
 
-# TODO: move into SConscript
-# neutron plugin (outside of scons files as others)
-pushd $src_root/openstack/neutron_plugin
-python3 setup.py bdist_wheel --dist-dir /pip
-popd
-
-# TODO: move into SConscript
-# heat plugin (outside of scons files as others)
-pushd $src_root/openstack/contrail-heat
-python3 setup.py bdist_wheel --dist-dir /pip
-popd
-
 # contrail-docs
 # Move schema specific files to opserver
 for mod_dir in ${BUILD_ROOT}/usr/share/doc/contrail-docs/html/messages/* ; do
@@ -104,3 +92,6 @@ cp -a /root/work/build/lib/lib*.so* ${BUILD_ROOT}/usr/lib/
 # webui
 cp -rp $src_root/contrail-web-controller/* ${BUILD_ROOT}/usr/src/contrail/contrail-web-controller/
 cp -rp $src_root/contrail-web-core/* ${BUILD_ROOT}/usr/src/contrail/contrail-web-core/
+
+# list python packages
+ls -lh /pip

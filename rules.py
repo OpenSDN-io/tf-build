@@ -20,14 +20,18 @@ import getpass
 import multiprocessing
 
 
-def _ensure_str(s):
-    if isinstance(s, bytes):
-        return s.decode()
-    return s
+if hasattr(SCons.Warnings, "Warning"):
+    # scons 3.x
+    class SandeshWarning(SCons.Warnings.Warning):
+        pass
+else:
+    # scons 4.x
+    class SandeshWarning(SCons.Warnings.SConsWarning):
+        pass
 
 
-def GetPyVersion(env):
-    return '0.1.dev0'
+class SandeshCodeGeneratorError(SandeshWarning):
+    pass
 
 
 def GetTestEnvironment(test):
@@ -52,7 +56,6 @@ def RunUnitTest(env, target, source, timeout=300):
 
     test = str(source[0].abspath)
     logfile = open(target[0].abspath, 'w')
-    #    env['_venv'] = {target: venv}
     tgt = target[0].name
     if '_venv' in env and tgt in env['_venv'] and env['_venv'][tgt]:
         cmd = ['/bin/bash', '-c', 'source %s/bin/activate && %s' % (
@@ -165,35 +168,6 @@ def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
     return test_cmd
 
 
-def setup_venv(env, target, venv_name, path=None, is_py3=False):
-    p = path
-    if not p:
-        p = env.Dir(env['TOP']).abspath
-
-    tdir = '/tmp/cache/%s/systemless_test' % getpass.getuser()
-    shell_cmd = ' && '.join([
-        'cd %s' % p,
-        'mkdir -p %s' % tdir,
-        '[ -f %s/ez_setup-0.9.tar.gz ] || curl -o %s/ez_setup-0.9.tar.gz https://pypi.python.org/packages/source/e/ez_setup/ez_setup-0.9.tar.gz' % (tdir, tdir),
-        '[ -d ez_setup-0.9 ] || tar xzf %s/ez_setup-0.9.tar.gz' % tdir,
-        '[ -f %s/redis-2.6.13.tar.gz ] || (cd %s && wget https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/redis/redis-2.6.13.tar.gz)' % (tdir, tdir),
-        '[ -d ../redis-2.6.13 ] || (cd .. && tar xzf %s/redis-2.6.13.tar.gz)' % tdir,
-        '[ -f testroot/bin/redis-server ] || ( cd ../redis-2.6.13 && make PREFIX=%s/testroot install)' % p,
-        'virtualenv %s',
-    ])
-
-    # Create python3 virtualenv
-    if is_py3:
-        shell_cmd += ' --python=python3'
-
-    for t, v in zip(target, venv_name):
-        cmd = env.Command(v, '', shell_cmd % (v,))
-        env.Alias(t, cmd)
-        cmd._path = '/'.join([p, v])
-        env[t] = cmd
-    return target
-
-
 def UnitTest(env, name, sources, **kwargs):
     test_env = env.Clone()
 
@@ -231,7 +205,7 @@ def GetBuildVersion(env):
                              stderr=subprocess.PIPE,
                              shell='True')
         git_hash, _ = p.communicate()
-        git_hash = _ensure_str(git_hash).strip()
+        git_hash = git_hash.decode()
     else:
         # Or should we look for vrouter, tools/build, or ??
         git_hash = 'noctrlr'
@@ -382,90 +356,6 @@ def ExtractHeaderFunc(env, filelist):
     return Headers
 
 
-def ProtocDescBuilder(target, source, env):
-    if not env.Detect('protoc'):
-        raise SCons.Errors.StopError(
-            'protoc Compiler not detected on system')
-    etcd_incl = os.environ.get('CONTRAIL_ETCD_INCL')
-    if etcd_incl:
-        protoc = env.Dir('#/third_party/grpc/bins/opt/protobuf').abspath + '/protoc'
-        protop = ' --proto_path=build/include/ '
-    else:
-        protoc = env.WhereIs('protoc')
-        protop = ' --proto_path=/usr/include/ '
-    protoc_cmd = protoc + ' --descriptor_set_out=' + \
-        str(target[0]) + ' --include_imports ' + \
-        ' --proto_path=controller/src/' + \
-        protop + \
-        ' --proto_path=src/contrail-analytics/contrail-collector/ ' + \
-        str(source[0])
-    print(protoc_cmd)
-    code = subprocess.call(protoc_cmd, shell=True)
-    if code != 0:
-        raise SCons.Errors.StopError(
-            'protobuf desc generation failed')
-
-
-def ProtocSconsEnvDescFunc(env):
-    descbuild = Builder(action=ProtocDescBuilder)
-    env.Append(BUILDERS={'ProtocDesc': descbuild})
-
-
-def ProtocGenDescFunc(env, file):
-    ProtocSconsEnvDescFunc(env)
-    suffixes = ['.desc']
-    basename = Basename(file)
-    targets = map(lambda suffix: basename + suffix, suffixes)
-    return env.ProtocDesc(targets, file)
-
-
-# ProtocCpp Methods
-def ProtocCppBuilder(target, source, env):
-    spath = str(source[0]).rsplit('/', 1)[0] + "/"
-    if not env.Detect('protoc'):
-        raise SCons.Errors.StopError(
-            'protoc Compiler not detected on system')
-    etcd_incl = os.environ.get('CONTRAIL_ETCD_INCL')
-    if etcd_incl:
-        protoc = env.Dir('#/third_party/grpc/bins/opt/protobuf').abspath + '/protoc'
-        protop = ' --proto_path=build/include/ '
-    else:
-        protoc = env.WhereIs('protoc')
-        protop = ' --proto_path=/usr/include/ '
-    protoc_cmd = protoc + protop + \
-        ' --proto_path=src/contrail-analytics/contrail-collector/ ' + \
-        '--proto_path=controller/src/ --proto_path=' + \
-        spath + ' --cpp_out=' + str(env.Dir(env['TOP'])) + \
-        env['PROTOC_MAP_TGT_DIR'] + ' ' + \
-        str(source[0])
-    print(protoc_cmd)
-    code = subprocess.call(protoc_cmd, shell=True)
-    if code != 0:
-        raise SCons.Errors.StopError(
-            'protobuf code generation failed')
-
-
-def ProtocSconsEnvCppFunc(env):
-    cppbuild = Builder(action=ProtocCppBuilder)
-    env.Append(BUILDERS={'ProtocCpp': cppbuild})
-
-
-def ProtocGenCppMapTgtDirFunc(env, file, target_root=''):
-    if target_root == '':
-        env['PROTOC_MAP_TGT_DIR'] = ''
-    else:
-        env['PROTOC_MAP_TGT_DIR'] = '/' + target_root
-    ProtocSconsEnvCppFunc(env)
-    suffixes = ['.pb.h', '.pb.cc']
-    basename = Basename(file)
-    targets = map(lambda suffix: basename + suffix, suffixes)
-    return env.ProtocCpp(targets, file)
-
-
-def ProtocGenCppFunc(env, file):
-    return (ProtocGenCppMapTgtDirFunc(env, file, ''))
-
-
 # When doing parallel build, scons will sometimes try to invoke the
 # sandesh compiler while sandesh itself is still being compiled and
 # linked. This results in a 'text file busy' error, and the build
@@ -488,20 +378,6 @@ def wait_for_sandesh_install(env):
         if rc != 1:
             print('scons: warning: sandesh -version returned %d, retrying' % rc)
             time.sleep(1)
-
-
-if hasattr(SCons.Warnings, "Warning"):
-    # scons 3.x
-    class SandeshWarning(SCons.Warnings.Warning):
-        pass
-else:
-    # scons 4.x
-    class SandeshWarning(SCons.Warnings.SConsWarning):
-        pass
-
-
-class SandeshCodeGeneratorError(SandeshWarning):
-    pass
 
 
 # SandeshGenDoc Methods
@@ -788,13 +664,6 @@ def DeviceAPIBuilderCmd(source, target, env, for_signature):
     return './src/contrail-api-client/generateds/generateDS.py -f -g device-api -o %s %s' % (output, source[0])
 
 
-def DeviceAPITargetGen(target, source, env):
-    suffixes = []
-    basename = Basename(source[0].abspath)
-    targets = map(lambda x: basename + x, suffixes)
-    return targets, source
-
-
 def CreateDeviceAPIBuilder(env):
     builder = Builder(generator=DeviceAPIBuilderCmd,
                       src_suffix='.xsd')
@@ -849,8 +718,7 @@ def VerifyClVersion():
     minimum_cl_version = [19, 0, 24215, 1]
 
     # Unfortunately there's no better way to check the CL version
-    output = subprocess.check_output(['cl.exe'], stderr=subprocess.STDOUT, encoding='ASCII')
-    output = _ensure_str(output)
+    output = subprocess.check_output(['cl.exe'], stderr=subprocess.STDOUT, encoding='ASCII').decode()
     regex_string = "Microsoft \(R\) C/C\+\+ [\s\w]*Version ([0-9]+)\." +\
                    "([0-9]+)\.([0-9]+)(?:\.([0-9]+))?[\s\w]*" # noqa
     regex_parser = re.compile(regex_string)
@@ -953,8 +821,6 @@ def SetupBuildEnvironment(conf):
 
     env = CheckBuildConfiguration(conf)
 
-    env.AddMethod(GetPyVersion, "GetPyVersion")
-
     # Let's decide how many jobs (-jNN) we should use.
     nj = GetOption('num_jobs')
     if nj == 1:
@@ -1025,7 +891,7 @@ def SetupBuildEnvironment(conf):
     # Store repo projects in the environment
     proc = subprocess.Popen('repo list', stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell='True')
     repo_out, _ = proc.communicate()
-    repo_out = _ensure_str(repo_out)
+    repo_out = repo_out.decode()
     repo_lines = repo_out.splitlines()
     repo_list = {}
     for line in repo_lines:
@@ -1063,8 +929,6 @@ def SetupBuildEnvironment(conf):
     env.Append(BUILDERS={'GenerateBuildInfoPyCode': GenerateBuildInfoPyCode})
     env.Append(BUILDERS={'GenerateBuildInfoCCode': GenerateBuildInfoCCode})
 
-    env.Append(BUILDERS={'setup_venv': setup_venv})
-
     env.AddMethod(SetupPyTestSuiteWithDeps, 'SetupPyTestSuiteWithDeps')
     env.AddMethod(EnsureBuildDependency, 'EnsureBuildDependency')
 
@@ -1072,9 +936,6 @@ def SetupBuildEnvironment(conf):
     env.AddMethod(ExtractCFunc, "ExtractC")
     env.AddMethod(ExtractHeaderFunc, "ExtractHeader")
     env.AddMethod(GetBuildVersion, "GetBuildVersion")
-    env.AddMethod(ProtocGenDescFunc, "ProtocGenDesc")
-    env.AddMethod(ProtocGenCppFunc, "ProtocGenCpp")
-    env.AddMethod(ProtocGenCppMapTgtDirFunc, "ProtocGenCppMapTgtDir")
     env.AddMethod(SandeshGenOnlyCppFunc, "SandeshGenOnlyCpp")
     env.AddMethod(SandeshGenCppFunc, "SandeshGenCpp")
     env.AddMethod(SandeshGenCFunc, "SandeshGenC")
@@ -1167,8 +1028,7 @@ def SchemaSyncBuilder(target, source, env):
     # Ensure the yaml schema diff is commited
     yaml_schema_status_cmd = "git status --porcelain -- ."
     output = subprocess.check_output(
-        yaml_schema_status_cmd, shell=True, cwd=yaml_schema_path)
-    output = _ensure_str(output)
+        yaml_schema_status_cmd, shell=True, cwd=yaml_schema_path).decode()
     if output != "":
         dec_str = "#" * 80
         print("%s\n\nSchema modified!!!\n\n" % dec_str)

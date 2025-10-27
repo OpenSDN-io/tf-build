@@ -73,10 +73,6 @@ def RunUnitTest(env, target, source, timeout=300):
     heap_check = 'NO_HEAPCHECK' not in ShEnv
     if heap_check:
         ShEnv['HEAPCHECK'] = 'normal'
-        ShEnv['PPROF_PATH'] = 'build/bin/pprof'
-        # Fix for frequent crash in gperftools ListerThread during exit
-        # https://code.google.com/p/gperftools/issues/detail?id=497
-        ShEnv['LD_BIND_NOW'] = '1'
 
     if 'CONCURRENCY_CHECK_ENABLE' not in ShEnv:
         ShEnv['CONCURRENCY_CHECK_ENABLE'] = 'true'
@@ -928,6 +924,7 @@ def SetupBuildEnvironment(conf):
     env.Append(BUILDERS={'GenerateBuildInfoCode': GenerateBuildInfoCode})
     env.Append(BUILDERS={'GenerateBuildInfoPyCode': GenerateBuildInfoPyCode})
     env.Append(BUILDERS={'GenerateBuildInfoCCode': GenerateBuildInfoCCode})
+    env.Append(BUILDERS={'GenerateBuildInfoCCode': GenerateBuildInfoCCode})
 
     env.AddMethod(SetupPyTestSuiteWithDeps, 'SetupPyTestSuiteWithDeps')
     env.AddMethod(EnsureBuildDependency, 'EnsureBuildDependency')
@@ -944,6 +941,7 @@ def SetupBuildEnvironment(conf):
     env.AddMethod(GoBuildFunc, "GoBuild")
     env.AddMethod(GoUnitTest, "GoUnitTest")
     env.AddMethod(SchemaSyncFunc, "SyncSchema")
+    env.AddMethod(AddPythonSources, "AddPythonSources")
     CreateIFMapBuilder(env)
     CreateTypeBuilder(env)
     CreateDeviceAPIBuilder(env)
@@ -1048,3 +1046,16 @@ def SchemaSyncSconsEnvBuildFunc(env):
 def SchemaSyncFunc(env, target, source):
     SchemaSyncSconsEnvBuildFunc(env)
     return env.SchemaSyncSconsBuild(target, source)
+
+def AddPythonSources(env, path, excludes=[]) -> list:
+    result = []
+    for item in env.Glob(path + '/*'):
+        if item.name in excludes:
+            continue
+        elif item.cwd:
+            if str(item.cwd) != '.':
+                # some strange behaviour from nodemgr/common
+                result += env.AddPythonSources(str(item.cwd), excludes=excludes)
+        else:
+            result.append(item)
+    return result

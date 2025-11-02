@@ -149,7 +149,7 @@ def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
     skipfile = GetOption('skip_tests')
     if skipfile and os.path.isfile(skipfile):
         test_cmd += ' -- --exclude-list ' + skipfile
-    test_cmd = env.Command('test.log', sdist_target, cmd_base % (test_cmd, "test"))
+    test_cmd = env.Command(top_dir + "/test.log", sdist_target, cmd_base % (test_cmd, "test"))
 
     if 'sdist_depends' in kwargs:
         env.Depends(test_cmd, kwargs['sdist_depends'])
@@ -157,7 +157,7 @@ def SetupPyTestSuiteWithDeps(env, sdist_target, *args, **kwargs):
     env.Alias(env.Dir('.').srcnode().path + ':test', test_cmd)
 
     env.tests.add_test(
-        env.Dir('.').abspath + "/test.log",
+        top_dir + "/test.log",
         top_dir + "/test-results.xml",
         top_dir + "/test.log")
 

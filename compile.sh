@@ -31,12 +31,14 @@ mkdir -p ${BUILD_ROOT}/usr/src/contrail/contrail-web-controller/ ${BUILD_ROOT}/u
 
 pushd $src_root/
 build_jobs=$(nproc --ignore=1)
+build_number=$(date +%Y%m%d%H%M)
 # compile and pack most components
-scons -j "$build_jobs" --opt=$SCONS_OPT --root=${BUILD_ROOT} --without-dpdk install
+scons -j "$build_jobs" --opt=$SCONS_OPT --root=${BUILD_ROOT} --without-dpdk --build-number="$build_number" install
 # dpdk stuff
 scons \
     --opt=$SCONS_OPT \
     -j "$build_jobs" \
+    --build-number="$build_number" \
     --dpdk-jobs="$build_jobs" \
     --root=$src_root/BUILD \
     --add-opts=enableMellanox \

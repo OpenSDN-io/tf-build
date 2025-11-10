@@ -20,6 +20,10 @@ import getpass
 import multiprocessing
 
 
+# treat this as a sigletone
+_build_number = datetime.datetime.utcnow().strftime("%Y%m%d%H%M")
+
+
 if hasattr(SCons.Warnings, "Warning"):
     # scons 3.x
     class SandeshWarning(SCons.Warnings.Warning):
@@ -193,19 +197,6 @@ def GenerateBuildInfoCode(env, target, source, path):
 # git hash of head and get base version from version.info, else use
 # hard-coded values.
 def GetBuildVersion(env):
-    # Fetch git version
-    controller_path = env.Dir('#controller').path
-    if os.path.exists(controller_path):
-        p = subprocess.Popen('cd %s && git rev-parse --short HEAD' % controller_path,
-                             stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE,
-                             shell='True')
-        git_hash, _ = p.communicate()
-        git_hash = git_hash.decode()
-    else:
-        # Or should we look for vrouter, tools/build, or ??
-        git_hash = 'noctrlr'
-
     # Fetch build version
     file_path = env.File('#/controller/src/base/version.info').abspath
     if os.path.exists(file_path):
@@ -214,12 +205,12 @@ def GetBuildVersion(env):
     else:
         base_ver = "3.0"
 
-    return git_hash, base_ver
+    return base_ver
 
 
 def GetBuildInfoData(env, target, source):
     try:
-        build_user = os.environ['USER']
+        build_user = getpass.getuser()
     except KeyError:
         build_user = "unknown"
 
@@ -229,16 +220,19 @@ def GetBuildInfoData(env, target, source):
         build_host = "unknown"
 
     # Fetch Time in UTC
-    build_time = str(datetime.datetime.utcnow())
+    build_time = datetime.datetime.utcnow()
 
-    build_git_info, build_version = GetBuildVersion(env)
+    build_version = GetBuildVersion(env)
+    build_number = GetOption('build_number')
 
     # build json string containing build information
     info = {
         'build-version': build_version,
-        'build-time': build_time,
+        'build-time': str(build_time),
         'build-user': build_user,
-        'build-hostname': build_host
+        'build-hostname': build_host,
+        'build-id': build_version,
+        'build-number': build_number if build_number else _build_number
     }
 
     return json.dumps({'build-info': [info]})
@@ -293,24 +287,7 @@ const char *ContrailBuildInfo = "%(json)s";
 
 
 def GenerateBuildInfoPyCode(env, target, source, path):
-    try:
-        build_user = getpass.getuser()
-    except KeyError:
-        build_user = "unknown"
-
-    try:
-        build_host = env['HOSTNAME']
-    except KeyError:
-        build_host = "unknown"
-
-    # Fetch Time in UTC
-    build_time = datetime.datetime.utcnow()
-
-    build_git_info, build_version = GetBuildVersion(env)
-
-    # build json string containing build information
-    build_info = "{\\\"build-info\\\" : [{\\\"build-version\\\" : \\\"" + str(build_version) + "\\\", \\\"build-time\\\" : \\\"" + str(build_time) + "\\\", \\\"build-user\\\" : \\\"" + build_user + "\\\", \\\"build-hostname\\\" : \\\"" + build_host + "\\\", "
-    py_code = "build_info = \"" + build_info + "\"\n"
+    py_code = "build_info = '" + GetBuildInfoData(env, target, source) + "'"
     with open(path + '/buildinfo.py', 'w') as py_file:
         py_file.write(py_code)
 
@@ -814,6 +791,8 @@ def SetupBuildEnvironment(conf):
               action='store', default='c++11',
               choices=['c++98', 'c++11', 'c++14', 'c++17', 'c++2a'],
               help='C++ standard[c++98, c++11, c++14, c++17, c++2a]')
+
+    AddOption('--build-number', dest='build_number', action='store')
 
     env = CheckBuildConfiguration(conf)
 

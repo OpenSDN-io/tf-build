@@ -591,7 +591,7 @@ def GoBuildFunc(env, mod_path, target):
     goenv['CGO_ENABLED'] = '0'
 
     cmd = 'cd ' + mod_path + '; '
-    cmd += goenv['GOROOT'] + '/bin/go install -ldflags "-s -w" ' + target
+    cmd += goenv['GOROOT'] + '/bin/go install -buildvcs=false -ldflags "-s -w" ' + target
     code = subprocess.call(cmd, shell=True, env=goenv)
     if code != 0:
         raise SCons.Errors.StopError(SandeshCodeGeneratorError,

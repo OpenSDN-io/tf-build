@@ -919,7 +919,6 @@ def SetupBuildEnvironment(conf):
     env.AddMethod(SandeshGenDocFunc, "SandeshGenDoc")
     env.AddMethod(GoBuildFunc, "GoBuild")
     env.AddMethod(GoUnitTest, "GoUnitTest")
-    env.AddMethod(SchemaSyncFunc, "SyncSchema")
     env.AddMethod(AddPythonSources, "AddPythonSources")
     CreateIFMapBuilder(env)
     CreateTypeBuilder(env)
@@ -981,50 +980,6 @@ def DescribeAliases():
     for alias in sorted(Alias.default_ans.keys()):
         print(alias)
 
-
-def SchemaSyncBuilder(target, source, env):
-    target_path = env.Dir(str(target[0]).rsplit('/', 1)[0] + "/").abspath
-    # generate yaml schema
-    generateds = env.File('#src/contrail-api-client/generateds/generateDS.py').abspath
-    schema_gen_cmd = "python3 %s -f -o %s -g contrail-json-schema %s" % (
-        generateds, target_path, str(source[0]))
-    code = subprocess.call(schema_gen_cmd, shell=True)
-    if code != 0:
-        raise SCons.Errors.StopError(
-            'Failed to generate yaml schema from xml schema')
-
-    # sync yaml schema
-    source_path = env.Dir(str(source[0]).rsplit('/', 1)[0] + "/").abspath
-    yaml_schema_path = source_path + "/yaml"
-    schema_sync_cmd = "cp -r %s/* %s/" % (target_path, yaml_schema_path)
-    code = subprocess.call(schema_sync_cmd, shell=True)
-    if code != 0:
-        raise SCons.Errors.StopError(
-            'Failed to sync generated yaml schema to %s' % yaml_schema_path)
-
-    # Ensure the yaml schema diff is commited
-    yaml_schema_status_cmd = "git status --porcelain -- ."
-    output = subprocess.check_output(
-        yaml_schema_status_cmd, shell=True, cwd=yaml_schema_path).decode()
-    if output != "":
-        dec_str = "#" * 80
-        print("%s\n\nSchema modified!!!\n\n" % dec_str)
-        print(output)
-        print("\n\n")
-        print("Please add yaml schema changes in %s/* to your commit\n\n%s" %
-              (yaml_schema_path, dec_str))
-        raise SCons.Errors.StopError(
-            "XML and YAML schema's are out of sync!")
-
-
-def SchemaSyncSconsEnvBuildFunc(env):
-    schemabuild = Builder(action=SchemaSyncBuilder)
-    env.Append(BUILDERS={'SchemaSyncSconsBuild': schemabuild})
-
-
-def SchemaSyncFunc(env, target, source):
-    SchemaSyncSconsEnvBuildFunc(env)
-    return env.SchemaSyncSconsBuild(target, source)
 
 def AddPythonSources(env, path, excludes=[]) -> list:
     result = []

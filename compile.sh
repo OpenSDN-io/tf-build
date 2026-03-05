@@ -12,6 +12,7 @@ SCONS_OPT=${SCONS_OPT:-production}
 
 # folder with built binaries/libs/docs/data/... files from tf-dev-sandbox container
 export BUILD_ROOT=${BUILD_ROOT:-'/buildroot'}
+export DEBUGINFO_ROOT=${DEBUGINFO_ROOT:-'/debuginfo'}
 
 my_dir=$(realpath $(dirname "$0"))
 src_root=$(dirname $(dirname "$my_dir"))
@@ -94,6 +95,42 @@ cp -a /root/work/build/lib/lib*.so* ${BUILD_ROOT}/usr/lib/
 # webui
 cp -rp $src_root/contrail-web-controller/* ${BUILD_ROOT}/usr/src/contrail/contrail-web-controller/
 cp -rp $src_root/contrail-web-core/* ${BUILD_ROOT}/usr/src/contrail/contrail-web-core/
+
+# strip debuginfo
+pushd ${BUILD_ROOT}
+mkdir -p ${DEBUGINFO_ROOT}
+touch ${DEBUGINFO_ROOT}/debug
+
+# 1. Create a file containing *only* the debug information
+if [[ ${DEBUGINFO^^} == 'TRUE' ]]; then
+  for ff in $(find usr/bin usr/lib -type f) ; do 
+    if ! readelf -h $ff &>/dev/null ; then
+      continue
+    fi
+    mkdir -p ${DEBUGINFO_ROOT}/$(dirname $ff)
+    objcopy --only-keep-debug $ff ${DEBUGINFO_ROOT}/$ff.dbg
+  done
+fi
+
+# 2. Strip the debug sections from the original binary
+for ff in $(find usr/bin usr/lib -type f) ; do 
+  if readelf -h $ff &>/dev/null ; then
+    strip --strip-debug $ff
+  fi
+done
+
+# 3. Add a link in the stripped binary pointing to the separate debug file
+if [[ ${DEBUGINFO^^} == 'TRUE' ]]; then
+  for ff in $(find usr/bin usr/lib -type f) ; do 
+    if ! readelf -h $ff &>/dev/null ; then
+      continue
+    fi
+    mkdir -p ${DEBUGINFO_ROOT}/$(dirname $ff)
+    objcopy --add-gnu-debuglink=${DEBUGINFO_ROOT}/$ff.dbg $ff
+  done
+fi
+
+popd
 
 # list python packages
 ls -lh /pip

@@ -618,11 +618,30 @@ def IFMapBuilderCmd(source, target, env, for_signature):
 
 
 def IFMapTargetGen(target, source, env):
+    sources = [source[0]]
+    dirname = os.path.dirname(source[0].abspath)
+    with open(source[0]) as fh:
+        for l in fh:
+            if "xsd:include" not in l:
+                continue
+            isl = l.find("schemaLocation=")
+            if isl == -1:
+                continue
+            i = l.find('"', isl)
+            i = i if i != -1 else l.find("'", isl)
+            if i == -1:
+                continue
+            j = l.find('"', i+1)
+            j = j if j != -1 else l.find("'", i+1)
+            if j == -1:
+                continue
+            sources.append(env.File(os.path.join(dirname, l[i+1:j])))
+
     suffixes = ['_types.h', '_types.cc', '_parser.cc',
                 '_server.cc', '_agent.cc']
     basename = Basename(source[0].abspath)
     targets = [basename + x for x in suffixes]
-    return targets, source
+    return targets, sources
 
 
 def CreateIFMapBuilder(env):

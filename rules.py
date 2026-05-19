@@ -788,6 +788,11 @@ def SetupBuildEnvironment(conf):
               choices=['debug', 'production', 'profile'],
               help='optimization level: [debug|production|profile]')
 
+    AddOption('--coverage', dest='coverage',
+              action='store_true',
+              help='Enables code coverage report generation',
+              default=False)
+
     AddOption('--target', dest='target',
               action='store', default='x86_64',
               choices=['i686', 'x86_64', 'armhf'])
@@ -912,6 +917,12 @@ def SetupBuildEnvironment(conf):
         env.Append(CCFLAGS=['-O3', '-DDEBUG', '-pg'])
         env.Append(LINKFLAGS=['-pg'])
         env['TOP'] = '#build/profile'
+
+    if GetOption('coverage'):
+        env.Append(CCFLAGS='--coverage')
+        env.Append(CXXFLAGS='--coverage')
+        env.Append(LDFLAGS='--coverage')
+        env.Append(LINKFLAGS='--coverage')
 
     if "CONTRAIL_COMPILE_WITHOUT_SYMBOLS" not in os.environ:
         env.Append(CCFLAGS='-g')
